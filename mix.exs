@@ -132,6 +132,9 @@ defmodule AshSqlite.MixProject do
         Types: [
           AshSqlite.Type
         ],
+        "Custom Aggregates": [
+          AshSqlite.CustomAggregate
+        ],
         Expressions: [
           AshSqlite.Functions.Fragment,
           AshSqlite.Functions.Like

@@ -139,6 +139,36 @@ end
 
 `list` aggregates return lists through SQLite JSON aggregation. `custom` aggregates require a SQLite-compatible aggregate expression or function.
 
+## Custom Aggregates
+
+Custom aggregates should use both `Ash.Resource.Aggregate.CustomAggregate` and `AshSqlite.CustomAggregate`.
+
+```elixir
+defmodule MyApp.StringAgg do
+  use Ash.Resource.Aggregate.CustomAggregate
+  use AshSqlite.CustomAggregate
+
+  require Ecto.Query
+
+  def dynamic(opts, binding) do
+    Ecto.Query.dynamic(
+      [],
+      fragment("group_concat(?, ?)", field(as(^binding), ^opts[:field]), ^opts[:delimiter])
+    )
+  end
+end
+```
+
+Then use that implementation from a resource aggregate.
+
+```elixir
+aggregates do
+  custom :ticket_subjects_joined, :tickets, :string do
+    implementation {MyApp.StringAgg, field: :subject, delimiter: ", "}
+  end
+end
+```
+
 ## Performance
 
 AshSqlite builds aggregate queries as grouped subqueries or windowed subqueries and joins those results back to the parent query. Add indexes for the relationship keys used by those subqueries.

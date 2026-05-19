@@ -5,6 +5,9 @@
 defmodule AshSqlite.Test.StringAgg do
   @moduledoc false
 
+  use Ash.Resource.Aggregate.CustomAggregate
+  use AshSqlite.CustomAggregate
+
   import Ecto.Query
 
   def dynamic(opts, binding) do
