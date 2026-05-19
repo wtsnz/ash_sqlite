@@ -326,11 +326,71 @@ Helpdesk.Support.Ticket
 
 ### Aggregates
 
-AshSqlite supports loading, filtering, sorting, and expression calculations for related `count`, `sum`, `avg`, `min`, `max`, `exists`, `first`, `list`, and `custom` aggregates over normal relationship paths, and over one-hop many-to-many relationships. Parent-independent unrelated aggregates are also supported. Aggregate filters and aggregate `join_filter`s are supported for those same paths when they do not depend on parent row values. `list` aggregates use SQLite JSON aggregation, and `custom` aggregates require a SQLite-compatible aggregate implementation. `first` and `list` aggregate support requires SQLite features including window functions, aggregate `FILTER`, JSON aggregation, and explicit null ordering.
+Aggregates include grouped data about relationships. You can read more about them in the [Ash aggregates guide](https://hexdocs.pm/ash/aggregates.html) and the [AshSqlite aggregates guide](../topics/resources/aggregates.md).
 
-Full aggregate parity with [ash_postgres](https://github.com/ash-project/ash_postgres) is not available yet. Unsupported cases include inline query-level `list`/`custom` aggregate expressions, unrelated aggregates that reference the parent row, manual relationships, `no_attributes?` relationships, multi-hop paths that include many-to-many relationships, parent-dependent relationship filters, parent-dependent aggregate filters, parent-dependent `join_filter`s, aggregate filters that reference other aggregates, expression sorts on `first`/`list` aggregates, `uniq` list aggregates sorted by fields other than the listed field, and fanout-prone `sum`, `avg`, `list`, `custom`, or field-based `count` aggregate filters over to-many relationship references.
+Lets add aggregates to the representative resource so we can query how many tickets are assigned to a representative, how many are open, and the latest ticket subject.
 
-Aggregate queries use grouped subqueries or windowed subqueries and join them back to the parent query. For aggregate-heavy SQLite apps, add indexes for relationship keys used by those subqueries, such as child foreign keys and many-to-many join-resource key pairs.
+```elixir
+# in lib/helpdesk/support/resources/representative.ex
+
+  aggregates do
+    count :total_tickets, :tickets
+
+    count :open_tickets, :tickets do
+      filter expr(status == :open)
+    end
+
+    exists :has_closed_tickets, :tickets do
+      filter expr(status == :closed)
+    end
+
+    first :latest_ticket_subject, :tickets, :subject do
+      sort inserted_at: :desc
+    end
+  end
+```
+
+Aggregates are translated to SQL and can be used in filters and sorts.
+
+```elixir
+require Ash.Query
+
+Helpdesk.Support.Representative
+|> Ash.Query.filter(open_tickets > 0)
+|> Ash.Query.sort(total_tickets: :desc)
+|> Ash.Query.load([:total_tickets, :open_tickets, :latest_ticket_subject])
+|> Ash.read!()
+```
+
+You can also load individual aggregates after records have already been read.
+
+```elixir
+representatives = Helpdesk.Support.read!(Helpdesk.Support.Representative)
+
+Ash.load!(representatives, [:open_tickets, :has_closed_tickets])
+```
+
+Calculations can refer to aggregates, and those calculations can also be filtered, sorted, and loaded.
+
+```elixir
+# in lib/helpdesk/support/resources/representative.ex
+
+  calculations do
+    calculate :percent_open, :float, expr(open_tickets / total_tickets)
+  end
+```
+
+```elixir
+require Ash.Query
+
+Helpdesk.Support.Representative
+|> Ash.Query.filter(percent_open > 0.25)
+|> Ash.Query.sort(:percent_open)
+|> Ash.Query.load(:percent_open)
+|> Ash.read!()
+```
+
+AshSqlite supports related `count`, `sum`, `avg`, `min`, `max`, `exists`, `first`, `list`, and `custom` aggregates over normal relationship paths, one-hop many-to-many relationship aggregates, and parent-independent unrelated aggregates. `first` and `list` aggregates require modern SQLite features including window functions, aggregate `FILTER`, JSON aggregation, and explicit null ordering.
 
 
 ### Rich Configuration Options
