@@ -326,11 +326,9 @@ Helpdesk.Support.Ticket
 
 ### Aggregates
 
-As stated in [what-is-ash-sqlite](https://hexdocs.pm/ash_sqlite/getting-started-with-ash-sqlite.html#steps),
-**The main feature missing is Aggregate support.**.
+AshSqlite supports loading related `count`, `sum`, `avg`, `min`, `max`, and `exists` aggregates over a single relationship.
 
-In order to use these consider using [ash_postgres](https://github.com/ash-project/ash_postgres) or
-provide a patch.
+Full aggregate parity with [ash_postgres](https://github.com/ash-project/ash_postgres) is not available yet. Unsupported cases include `first`, `list`, `custom`, unrelated aggregates, manual relationships, many-to-many relationships, parent-dependent relationship filters, aggregate sorting, and calculations that reference aggregates.
 
 
 ### Rich Configuration Options
