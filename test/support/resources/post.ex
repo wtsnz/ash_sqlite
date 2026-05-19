@@ -243,9 +243,19 @@ defmodule AshSqlite.Test.Post do
       filter(expr(likes >= 5))
     end
 
+    list :comment_titles_with_popular_ratings, :comments, :title do
+      sort(title: :asc_nils_last)
+      filter(expr(not is_nil(popular_ratings.id)))
+    end
+
     list(:comment_ids, :comments, :id)
 
     custom(:comment_titles_joined, :comments, :string) do
+      implementation({AshSqlite.Test.StringAgg, field: :title, delimiter: ","})
+    end
+
+    custom(:comment_titles_joined_with_popular_ratings, :comments, :string) do
+      filter(expr(not is_nil(popular_ratings.id)))
       implementation({AshSqlite.Test.StringAgg, field: :title, delimiter: ","})
     end
 

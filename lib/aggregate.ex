@@ -905,7 +905,7 @@ defmodule AshSqlite.Aggregate do
 
       Enum.any?(aggregates, &unsupported_to_many_aggregate_filter?/1) ->
         {:error,
-         "AshSqlite does not support loading sum, avg, or field-based count aggregates with filters that reference to-many relationships"}
+         "AshSqlite does not support loading sum, avg, list, custom, or field-based count aggregates with filters that reference to-many relationships"}
 
       Enum.any?(aggregates, &join_filters_use_parent?/1) ->
         {:error,
@@ -952,7 +952,7 @@ defmodule AshSqlite.Aggregate do
   end
 
   defp unsupported_to_many_aggregate_filter?(%{kind: kind} = aggregate)
-       when kind in [:sum, :avg] do
+       when kind in [:sum, :avg, :list, :custom] do
     aggregate_filter_references_to_many_relationship?(aggregate)
   end
 
@@ -1284,8 +1284,7 @@ defmodule AshSqlite.Aggregate do
   defp ecto_sort_order(other), do: other
 
   defp aggregate_dynamic(query, relationship, %{kind: :exists} = aggregate, binding) do
-    count_field = count_field(relationship, aggregate)
-    count_dynamic = Ecto.Query.dynamic(count(field(as(^binding), ^count_field)))
+    count_dynamic = count_dynamic(relationship, aggregate, binding)
 
     with {:ok, query, count_dynamic} <-
            maybe_filter_aggregate(query, aggregate, count_dynamic) do
@@ -1294,14 +1293,7 @@ defmodule AshSqlite.Aggregate do
   end
 
   defp aggregate_dynamic(query, relationship, %{kind: :count} = aggregate, binding) do
-    count_field = count_field(relationship, aggregate)
-
-    dynamic =
-      if count_distinct?(aggregate) do
-        Ecto.Query.dynamic(count(field(as(^binding), ^count_field), :distinct))
-      else
-        Ecto.Query.dynamic(count(field(as(^binding), ^count_field)))
-      end
+    dynamic = count_dynamic(relationship, aggregate, binding)
 
     with {:ok, query, dynamic} <- maybe_filter_aggregate(query, aggregate, dynamic) do
       {:ok, query, maybe_default_aggregate(dynamic, aggregate)}
@@ -1337,6 +1329,26 @@ defmodule AshSqlite.Aggregate do
   defp aggregate_dynamic(_query, _relationship, aggregate, _binding) do
     {:error,
      "AshSqlite cannot load aggregate #{inspect(aggregate.name)} with field #{inspect(aggregate.field)}"}
+  end
+
+  defp count_dynamic(relationship, %{field: nil} = aggregate, binding) do
+    if count_distinct?(aggregate) do
+      count_field = count_field(relationship, aggregate)
+
+      Ecto.Query.dynamic(count(field(as(^binding), ^count_field), :distinct))
+    else
+      Ecto.Query.dynamic(count())
+    end
+  end
+
+  defp count_dynamic(relationship, aggregate, binding) do
+    count_field = count_field(relationship, aggregate)
+
+    if count_distinct?(aggregate) do
+      Ecto.Query.dynamic(count(field(as(^binding), ^count_field), :distinct))
+    else
+      Ecto.Query.dynamic(count(field(as(^binding), ^count_field)))
+    end
   end
 
   defp count_field(_relationship, %{field: field}) when is_atom(field) and not is_nil(field) do

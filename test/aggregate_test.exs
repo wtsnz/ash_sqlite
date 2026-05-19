@@ -88,6 +88,17 @@ defmodule AshSqlite.AggregatesTest do
              |> Ash.read!()
   end
 
+  test "fieldless count aggregates use SQL count star" do
+    {:ok, query} =
+      Post
+      |> Ash.Query.load(:count_of_comments)
+      |> Ash.Query.data_layer_query()
+
+    {sql, _params} = Ecto.Adapters.SQL.to_sql(:all, AshSqlite.TestRepo, query)
+
+    assert sql =~ "count(*)"
+  end
+
   test "relationship filters are applied to loaded aggregates" do
     post = create_post!("relationship filter")
 
@@ -257,6 +268,21 @@ defmodule AshSqlite.AggregatesTest do
                :sum_of_comment_likes,
                :count_of_comments_with_popular_ratings
              ])
+  end
+
+  test "fanout-prone list and custom aggregate filters return stable unsupported errors" do
+    post = create_post!("fanout aggregate filter")
+    comment = create_comment!(post, "popular", 1)
+    create_comment_rating!(comment, 10)
+    create_comment_rating!(comment, 11)
+
+    assert_raise Ash.Error.Unknown, ~r/list, custom, or field-based count aggregates/, fn ->
+      Ash.load!(post, :comment_titles_with_popular_ratings)
+    end
+
+    assert_raise Ash.Error.Unknown, ~r/list, custom, or field-based count aggregates/, fn ->
+      Ash.load!(post, :comment_titles_joined_with_popular_ratings)
+    end
   end
 
   test "aggregate filters using parent expressions return a stable unsupported error" do
