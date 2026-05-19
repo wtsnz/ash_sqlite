@@ -234,10 +234,28 @@ defmodule AshSqlite.AggregatesTest do
     unpopular_comment = create_comment!(post, "unpopular", 1)
 
     create_comment_rating!(popular_comment, 10)
+    create_comment_rating!(popular_comment, 11)
     create_comment_rating!(unpopular_comment, 1)
 
-    assert %{count_of_comments_with_popular_ratings: 1} =
-             Ash.load!(post, :count_of_comments_with_popular_ratings)
+    assert %{
+             count_of_comments: 2,
+             sum_of_comment_likes: 2,
+             count_of_comments_with_popular_ratings: 1
+           } =
+             Ash.load!(post, [
+               :count_of_comments,
+               :sum_of_comment_likes,
+               :count_of_comments_with_popular_ratings
+             ])
+  end
+
+  test "aggregate filters through parent-dependent relationships return a stable unsupported error" do
+    post = create_post!("indirect parent")
+    create_comment!(post, "indirect parent", 1)
+
+    assert_raise Ash.Error.Unknown, ~r/relationships with parent-dependent filters/, fn ->
+      Ash.load!(post, :count_of_comments_with_indirect_parent_filter)
+    end
   end
 
   test "aggregate filters using parent expressions return a stable unsupported error" do

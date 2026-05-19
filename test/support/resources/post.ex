@@ -203,6 +203,10 @@ defmodule AshSqlite.Test.Post do
       filter(expr(not is_nil(post.id)))
     end
 
+    count :count_of_comments_with_indirect_parent_filter, :comments do
+      filter(expr(not is_nil(post.comments_matching_post_title.id)))
+    end
+
     count :count_of_comments_with_related_exists_filter, :comments do
       filter(expr(exists(post, not is_nil(id))))
     end

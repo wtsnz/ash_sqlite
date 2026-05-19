@@ -100,11 +100,22 @@ defmodule AshSqlite.Aggregate do
   defp aggregate_group_key(aggregate) do
     read_action = (aggregate.query.action && aggregate.query.action.name) || aggregate.read_action
 
-    {aggregate.relationship_path, read_action, aggregate.join_filters || %{}}
+    {aggregate.relationship_path, read_action, aggregate.join_filters || %{},
+     aggregate_filter_group_key(aggregate)}
   end
 
-  defp aggregate_relationship_path({relationship_path, _read_action, _join_filters}) do
+  defp aggregate_relationship_path(
+         {relationship_path, _read_action, _join_filters, _aggregate_filter_group}
+       ) do
     relationship_path
+  end
+
+  defp aggregate_filter_group_key(aggregate) do
+    if aggregate_filter_uses_relationships?(aggregate) do
+      {:filter, aggregate.name}
+    else
+      :shared
+    end
   end
 
   defp already_added?(aggregate, bindings) do
@@ -627,9 +638,17 @@ defmodule AshSqlite.Aggregate do
         {:error,
          "AshSqlite does not support loading aggregates with parent-dependent aggregate filters"}
 
+      Enum.any?(aggregates, &aggregate_filter_uses_parent_dependent_relationship?/1) ->
+        {:error,
+         "AshSqlite does not support loading aggregates with filters that reference relationships with parent-dependent filters"}
+
       Enum.any?(aggregates, &aggregate_filter_uses_aggregates?/1) ->
         {:error,
          "AshSqlite does not support loading aggregates with aggregate filters that reference other aggregates"}
+
+      Enum.any?(aggregates, &unsupported_to_many_aggregate_filter?/1) ->
+        {:error,
+         "AshSqlite does not support loading sum, avg, or field-based count aggregates with filters that reference to-many relationships"}
 
       Enum.any?(aggregates, &join_filters_use_parent?/1) ->
         {:error,
@@ -644,6 +663,24 @@ defmodule AshSqlite.Aggregate do
     filter_uses_parent?(filter)
   end
 
+  defp aggregate_filter_uses_parent_dependent_relationship?(%{
+         query: %{filter: filter, resource: resource}
+       }) do
+    filter
+    |> aggregate_filter_relationship_paths()
+    |> Enum.any?(&parent_dependent_relationship_path?(resource, &1))
+  end
+
+  defp aggregate_filter_uses_parent_dependent_relationship?(_aggregate), do: false
+
+  defp aggregate_filter_uses_relationships?(%{query: %{filter: filter}}) do
+    filter
+    |> aggregate_filter_relationship_paths()
+    |> Enum.any?()
+  end
+
+  defp aggregate_filter_uses_relationships?(_aggregate), do: false
+
   defp aggregate_filter_uses_aggregates?(%{query: %{filter: filter}}) when not is_nil(filter) do
     filter
     |> Ash.Filter.used_aggregates([])
@@ -651,6 +688,66 @@ defmodule AshSqlite.Aggregate do
   end
 
   defp aggregate_filter_uses_aggregates?(_aggregate), do: false
+
+  defp unsupported_to_many_aggregate_filter?(%{kind: :count, field: field} = aggregate)
+       when not is_nil(field) do
+    aggregate_filter_references_to_many_relationship?(aggregate) && !aggregate.uniq?
+  end
+
+  defp unsupported_to_many_aggregate_filter?(%{kind: kind} = aggregate)
+       when kind in [:sum, :avg] do
+    aggregate_filter_references_to_many_relationship?(aggregate)
+  end
+
+  defp unsupported_to_many_aggregate_filter?(_aggregate), do: false
+
+  defp aggregate_filter_references_to_many_relationship?(%{
+         query: %{filter: filter, resource: resource}
+       }) do
+    filter
+    |> aggregate_filter_relationship_paths()
+    |> Enum.any?(&to_many_relationship_path?(resource, &1))
+  end
+
+  defp aggregate_filter_references_to_many_relationship?(_aggregate), do: false
+
+  defp aggregate_filter_relationship_paths(nil), do: []
+
+  defp aggregate_filter_relationship_paths(%{expression: nil}), do: []
+
+  defp aggregate_filter_relationship_paths(filter) do
+    Ash.Filter.relationship_paths(filter)
+  end
+
+  defp parent_dependent_relationship_path?(_resource, []), do: false
+
+  defp parent_dependent_relationship_path?(resource, path) do
+    case relationships(resource, path) do
+      {:ok, relationships} ->
+        Enum.any?(
+          relationships,
+          &(relationship_filter_uses_parent?(&1) || join_relationship_filter_uses_parent?(&1))
+        )
+
+      {:error, _error} ->
+        false
+    end
+  end
+
+  defp to_many_relationship_path?(_resource, []), do: false
+
+  defp to_many_relationship_path?(resource, [relationship_name | rest]) do
+    case Ash.Resource.Info.relationship(resource, relationship_name) do
+      %{cardinality: :many} ->
+        true
+
+      nil ->
+        false
+
+      relationship ->
+        to_many_relationship_path?(relationship.destination, rest)
+    end
+  end
 
   defp join_filters_use_parent?(%{join_filters: join_filters}) when is_map(join_filters) do
     Enum.any?(join_filters, fn {_path, filter} -> filter_uses_parent?(filter) end)
@@ -663,11 +760,17 @@ defmodule AshSqlite.Aggregate do
   defp filter_uses_parent?(%{expression: nil}), do: false
 
   defp filter_uses_parent?(filter) do
-    Ash.Filter.find(filter, fn
-      %Ash.Query.Parent{} -> true
-      %Ash.Query.Call{name: :parent} -> true
-      _ -> false
-    end)
+    Ash.Filter.find(
+      filter,
+      fn
+        %Ash.Query.Parent{} -> true
+        %Ash.Query.Call{name: :parent} -> true
+        _ -> false
+      end,
+      true,
+      true,
+      true
+    )
     |> case do
       nil -> false
       _ -> true
@@ -688,7 +791,7 @@ defmodule AshSqlite.Aggregate do
     count_field = count_field(relationship, aggregate)
 
     dynamic =
-      if aggregate.uniq? do
+      if count_distinct?(aggregate) do
         Ecto.Query.dynamic(count(field(as(^binding), ^count_field), :distinct))
       else
         Ecto.Query.dynamic(count(field(as(^binding), ^count_field)))
@@ -734,6 +837,14 @@ defmodule AshSqlite.Aggregate do
       field -> field
     end
   end
+
+  defp count_distinct?(%{uniq?: true}), do: true
+
+  defp count_distinct?(%{field: nil} = aggregate) do
+    aggregate_filter_references_to_many_relationship?(aggregate)
+  end
+
+  defp count_distinct?(_aggregate), do: false
 
   defp maybe_filter_aggregate(query, aggregate, dynamic) do
     case aggregate.query.filter do
