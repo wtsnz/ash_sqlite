@@ -6,7 +6,7 @@ defmodule AshSqlite.AggregatesTest do
   use AshSqlite.RepoCase, async: false
 
   require Ash.Query
-  alias AshSqlite.Test.{Author, Comment, Post, PostLink}
+  alias AshSqlite.Test.{Author, Comment, Post, PostLink, Rating}
 
   test "a count with a filter returns the appropriate value" do
     Ash.Seed.seed!(%Post{title: "foo"})
@@ -47,6 +47,7 @@ defmodule AshSqlite.AggregatesTest do
         :count_of_popular_comments,
         :count_of_comments_called_match,
         :sum_of_comment_likes,
+        :sum_of_comment_likes_called_match,
         :avg_comment_likes,
         :min_comment_likes,
         :max_comment_likes,
@@ -57,6 +58,7 @@ defmodule AshSqlite.AggregatesTest do
     assert loaded_post.count_of_popular_comments == 0
     assert loaded_post.count_of_comments_called_match == 1
     assert loaded_post.sum_of_comment_likes == 15
+    assert loaded_post.sum_of_comment_likes_called_match == 1
     assert loaded_post.avg_comment_likes == 5.0
     assert loaded_post.min_comment_likes == 1
     assert loaded_post.max_comment_likes == 10
@@ -214,6 +216,28 @@ defmodule AshSqlite.AggregatesTest do
 
     assert %{count_of_comments_with_related_filter: 2} =
              Ash.load!(post, :count_of_comments_with_related_filter)
+  end
+
+  test "aggregate filters can reference related exists expressions" do
+    post = create_post!("related aggregate exists filter")
+
+    create_comment!(post, "first", 1)
+    create_comment!(post, "second", 1)
+
+    assert %{count_of_comments_with_related_exists_filter: 2} =
+             Ash.load!(post, :count_of_comments_with_related_exists_filter)
+  end
+
+  test "aggregate filters can reference relationships that have filters" do
+    post = create_post!("filtered related aggregate filter")
+    popular_comment = create_comment!(post, "popular", 1)
+    unpopular_comment = create_comment!(post, "unpopular", 1)
+
+    create_comment_rating!(popular_comment, 10)
+    create_comment_rating!(unpopular_comment, 1)
+
+    assert %{count_of_comments_with_popular_ratings: 1} =
+             Ash.load!(post, :count_of_comments_with_popular_ratings)
   end
 
   test "aggregate filters using parent expressions return a stable unsupported error" do
@@ -508,6 +532,13 @@ defmodule AshSqlite.AggregatesTest do
     Comment
     |> Ash.Changeset.for_create(:create, %{title: title, likes: likes})
     |> Ash.Changeset.manage_relationship(:post, post, type: :append_and_remove)
+    |> Ash.create!()
+  end
+
+  defp create_comment_rating!(comment, score) do
+    Rating
+    |> Ash.Changeset.for_create(:create, %{score: score, resource_id: comment.id})
+    |> Ash.Changeset.set_context(%{data_layer: %{table: "comment_ratings"}})
     |> Ash.create!()
   end
 

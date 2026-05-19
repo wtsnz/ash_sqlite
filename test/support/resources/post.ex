@@ -182,6 +182,7 @@ defmodule AshSqlite.Test.Post do
     count(:count_of_linked_posts, :linked_posts)
     count(:count_of_liked_comments, :comments, read_action: :liked)
     sum(:sum_of_comment_likes, :comments, :likes)
+    sum(:sum_of_comment_likes_called_match, :comments, :likes, filter: expr(title == "match"))
     sum(:sum_of_linked_post_scores, :linked_posts, :score)
     avg(:avg_comment_likes, :comments, :likes)
     avg(:avg_linked_post_score, :linked_posts, :score)
@@ -200,6 +201,14 @@ defmodule AshSqlite.Test.Post do
 
     count :count_of_comments_with_related_filter, :comments do
       filter(expr(not is_nil(post.id)))
+    end
+
+    count :count_of_comments_with_related_exists_filter, :comments do
+      filter(expr(exists(post, not is_nil(id))))
+    end
+
+    count :count_of_comments_with_popular_ratings, :comments do
+      filter(expr(not is_nil(popular_ratings.id)))
     end
 
     count :count_of_comments_with_aggregate_filter, :comments do
