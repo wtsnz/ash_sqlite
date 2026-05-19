@@ -172,6 +172,23 @@ defmodule AshSqlite.Test.Post do
     validate(attribute_does_not_equal(:title, "not allowed"))
   end
 
+  aggregates do
+    count(:count_of_comments, :comments)
+    count(:count_of_popular_comments, :popular_comments)
+    sum(:sum_of_comment_likes, :comments, :likes)
+    avg(:avg_comment_likes, :comments, :likes)
+    min(:min_comment_likes, :comments, :likes)
+    max(:max_comment_likes, :comments, :likes)
+
+    count :count_of_comments_called_match, :comments do
+      filter(expr(title == "match"))
+    end
+
+    exists :has_comment_called_match, :comments do
+      filter(expr(title == "match"))
+    end
+  end
+
   calculations do
     calculate(:score_after_winning, :integer, expr((score || 0) + 1))
     calculate(:negative_score, :integer, expr(-score))
