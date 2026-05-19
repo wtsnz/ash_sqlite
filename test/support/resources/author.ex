@@ -59,6 +59,10 @@ defmodule AshSqlite.Test.Author do
       filter(expr(not is_nil(description)))
     end
 
+    count :profiles_matching_first_name, AshSqlite.Test.Profile do
+      filter(expr(description == parent(first_name)))
+    end
+
     first :first_profile_description, AshSqlite.Test.Profile, :description do
       sort(description: :asc_nils_last)
     end

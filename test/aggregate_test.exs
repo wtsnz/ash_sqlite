@@ -434,6 +434,27 @@ defmodule AshSqlite.AggregatesTest do
     assert second_author_id == second_author.id
   end
 
+  test "unsupported aggregate relationship shapes return stable errors" do
+    manual_relationship = Ash.Resource.Info.relationship(Post, :comments_containing_title)
+    no_attributes_relationship = Ash.Resource.Info.relationship(Post, :posts_with_matching_title)
+
+    parent_filter_relationship =
+      Ash.Resource.Info.relationship(Post, :comments_matching_post_title)
+
+    refute AshSqlite.DataLayer.can?(Post, {:aggregate_relationship, manual_relationship})
+    refute AshSqlite.DataLayer.can?(Post, {:aggregate_relationship, no_attributes_relationship})
+    refute AshSqlite.DataLayer.can?(Post, {:aggregate_relationship, parent_filter_relationship})
+  end
+
+  test "parent-dependent unrelated aggregate filters return a stable unsupported error" do
+    author = create_author!("parent", "unrelated")
+    create_profile!("parent")
+
+    assert_raise Ash.Error.Unknown, ~r/parent-dependent aggregate filters/, fn ->
+      Ash.load!(author, :profiles_matching_first_name)
+    end
+  end
+
   test "calculations can reference related aggregates" do
     post = create_post!("with aggregate calculation", %{score: 3})
     empty_post = create_post!("without aggregate calculation", %{score: 7})
