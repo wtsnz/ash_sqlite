@@ -161,6 +161,98 @@ defmodule AshSqlite.AggregatesTest do
     assert post_id == post.id
   end
 
+  test "resource queries can filter and sort on related aggregates without loading them" do
+    one_comment = create_post!("one unloaded comment")
+    two_comments = create_post!("two unloaded comments")
+    create_post!("no unloaded comments")
+
+    create_comment!(one_comment, "only", 1)
+    create_comment!(two_comments, "first", 1)
+    create_comment!(two_comments, "second", 1)
+
+    assert [%Post{id: two_comments_id}, %Post{id: one_comment_id}] =
+             Post
+             |> Ash.Query.filter(count_of_comments > 0)
+             |> Ash.Query.sort(count_of_comments: :desc)
+             |> Ash.read!()
+
+    assert two_comments_id == two_comments.id
+    assert one_comment_id == one_comment.id
+  end
+
+  test "list loads related aggregates" do
+    post = create_post!("list load")
+    empty_post = create_post!("list load empty")
+
+    create_comment!(post, "first", 1)
+    create_comment!(post, "second", 1)
+
+    assert [
+             %Post{id: post_id, count_of_comments: 2},
+             %Post{id: empty_post_id, count_of_comments: 0}
+           ] = Ash.load!([post, empty_post], :count_of_comments)
+
+    assert post_id == post.id
+    assert empty_post_id == empty_post.id
+  end
+
+  test "aggregate join filters are applied on one-hop relationships" do
+    post = create_post!("join filter")
+
+    create_comment!(post, "match", 1)
+    create_comment!(post, "other", 1)
+
+    assert %{count_of_comments_with_join_filter: 1} =
+             Ash.load!(post, :count_of_comments_with_join_filter)
+  end
+
+  test "aggregate filters can reference relationships" do
+    post = create_post!("related aggregate filter")
+
+    create_comment!(post, "first", 1)
+    create_comment!(post, "second", 1)
+
+    assert %{count_of_comments_with_related_filter: 2} =
+             Ash.load!(post, :count_of_comments_with_related_filter)
+  end
+
+  test "aggregate filters using parent expressions return a stable unsupported error" do
+    post = create_post!("same")
+    create_comment!(post, "same", 1)
+
+    assert_raise Ash.Error.Unknown, ~r/parent-dependent aggregate filters/, fn ->
+      Ash.load!(post, :count_of_comments_matching_post_title)
+    end
+  end
+
+  test "parent-dependent aggregate join filters return a stable unsupported error" do
+    post = create_post!("parent join")
+    create_comment!(post, "parent join", 1)
+
+    assert_raise Ash.Error.Unknown, ~r/parent-dependent join filters/, fn ->
+      Ash.load!(post, :count_of_comments_with_parent_join_filter)
+    end
+  end
+
+  test "aggregate filters that reference aggregates return a stable unsupported error" do
+    post = create_post!("aggregate filter")
+    create_comment!(post, "comment", 1)
+
+    assert_raise Ash.Error.Unknown, ~r/filters that reference other aggregates/, fn ->
+      Ash.load!(post, :count_of_comments_with_aggregate_filter)
+    end
+  end
+
+  test "same-path aggregates can use different read action filters" do
+    post = create_post!("read action aggregate")
+
+    create_comment!(post, "low", 1)
+    create_comment!(post, "high", 10)
+
+    assert %{count_of_comments: 2, count_of_liked_comments: 1} =
+             Ash.load!(post, [:count_of_comments, :count_of_liked_comments])
+  end
+
   test "calculations can reference related aggregates" do
     post = create_post!("with aggregate calculation", %{score: 3})
     empty_post = create_post!("without aggregate calculation", %{score: 7})
@@ -269,6 +361,17 @@ defmodule AshSqlite.AggregatesTest do
              Ash.load!(no_links, :linked_post_score_with_score)
   end
 
+  test "aggregate join filters are applied on many_to_many relationships" do
+    source = create_post!("m2m join filter source")
+    match = create_post!("match")
+    other = create_post!("other")
+
+    link_posts!(source, [match, other])
+
+    assert %{count_of_linked_posts_with_join_filter: 1} =
+             Ash.load!(source, :count_of_linked_posts_with_join_filter)
+  end
+
   test "multi-hop scalar aggregates can be loaded" do
     author = create_author!("multi", "hop")
     empty_author = create_author!("empty", "author")
@@ -351,6 +454,37 @@ defmodule AshSqlite.AggregatesTest do
              Ash.load!(no_comments, :comment_likes_through_posts_plus_one)
   end
 
+  test "aggregate join filters are applied on multi-hop relationships" do
+    author = create_author!("multi", "join filter")
+    public_post = create_post_for_author!(author, "public post", %{public: true})
+    private_post = create_post_for_author!(author, "private post", %{public: false})
+
+    create_comment!(public_post, "match", 1)
+    create_comment!(public_post, "other", 1)
+    create_comment!(private_post, "match", 1)
+
+    loaded_author =
+      Ash.load!(author, [
+        :count_of_comments_on_public_posts,
+        :count_of_comments_called_match_with_join_filter
+      ])
+
+    assert loaded_author.count_of_comments_on_public_posts == 2
+    assert loaded_author.count_of_comments_called_match_with_join_filter == 2
+  end
+
+  test "intermediate read action filters are applied on multi-hop aggregates" do
+    author = create_author!("multi", "read action")
+    public_post = create_post_for_author!(author, "public action post", %{public: true})
+    private_post = create_post_for_author!(author, "private action post", %{public: false})
+
+    create_comment!(public_post, "public", 1)
+    create_comment!(private_post, "private", 1)
+
+    assert %{count_of_comments_through_public_posts: 1} =
+             Ash.load!(author, :count_of_comments_through_public_posts)
+  end
+
   defp create_post!(title, attrs \\ %{}) do
     Post
     |> Ash.Changeset.for_create(:create, Map.put(attrs, :title, title))
@@ -363,9 +497,9 @@ defmodule AshSqlite.AggregatesTest do
     |> Ash.create!()
   end
 
-  defp create_post_for_author!(author, title) do
+  defp create_post_for_author!(author, title, attrs \\ %{}) do
     Post
-    |> Ash.Changeset.for_create(:create, %{title: title})
+    |> Ash.Changeset.for_create(:create, Map.put(attrs, :title, title))
     |> Ash.Changeset.manage_relationship(:author, author, type: :append_and_remove)
     |> Ash.create!()
   end

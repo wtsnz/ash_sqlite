@@ -43,6 +43,10 @@ defmodule AshSqlite.Test.Post do
       pagination(offset?: true, required?: true)
     end
 
+    read :public do
+      filter(expr(public == true))
+    end
+
     create :create do
       primary?(true)
       argument(:rating, :map)
@@ -176,6 +180,7 @@ defmodule AshSqlite.Test.Post do
     count(:count_of_comments, :comments)
     count(:count_of_popular_comments, :popular_comments)
     count(:count_of_linked_posts, :linked_posts)
+    count(:count_of_liked_comments, :comments, read_action: :liked)
     sum(:sum_of_comment_likes, :comments, :likes)
     sum(:sum_of_linked_post_scores, :linked_posts, :score)
     avg(:avg_comment_likes, :comments, :likes)
@@ -189,12 +194,36 @@ defmodule AshSqlite.Test.Post do
       filter(expr(title == "match"))
     end
 
+    count :count_of_comments_with_join_filter, :comments do
+      join_filter(:comments, expr(title == "match"))
+    end
+
+    count :count_of_comments_with_related_filter, :comments do
+      filter(expr(not is_nil(post.id)))
+    end
+
+    count :count_of_comments_with_aggregate_filter, :comments do
+      filter(expr(count_of_ratings > 0))
+    end
+
+    count :count_of_comments_matching_post_title, :comments do
+      filter(expr(title == parent(title)))
+    end
+
+    count :count_of_comments_with_parent_join_filter, :comments do
+      join_filter(:comments, expr(title == parent(title)))
+    end
+
     exists :has_comment_called_match, :comments do
       filter(expr(title == "match"))
     end
 
     exists :has_linked_post_called_match, :linked_posts do
       filter(expr(title == "match"))
+    end
+
+    count :count_of_linked_posts_with_join_filter, :linked_posts do
+      join_filter(:linked_posts, expr(title == "match"))
     end
   end
 
