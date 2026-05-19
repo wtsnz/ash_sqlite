@@ -467,6 +467,9 @@ defmodule AshSqlite.DataLayer do
     false
   end
 
+  def can?(_, {:aggregate, :unrelated}), do: true
+  def can?(_, {:exists, :unrelated}), do: true
+
   def can?(_, :boolean_filter), do: true
 
   def can?(_, {:aggregate, type})

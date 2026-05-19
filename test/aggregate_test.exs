@@ -6,7 +6,7 @@ defmodule AshSqlite.AggregatesTest do
   use AshSqlite.RepoCase, async: false
 
   require Ash.Query
-  alias AshSqlite.Test.{Author, Comment, Post, PostLink, Rating}
+  alias AshSqlite.Test.{Author, Comment, Post, PostLink, Profile, Rating}
 
   test "a count with a filter returns the appropriate value" do
     Ash.Seed.seed!(%Post{title: "foo"})
@@ -389,6 +389,51 @@ defmodule AshSqlite.AggregatesTest do
     assert joined |> String.split(",") |> Enum.sort() == ["aaa", "bbb"]
   end
 
+  test "unrelated aggregates without parent filters can be loaded" do
+    first_author = create_author!("first", "author")
+    second_author = create_author!("second", "author")
+
+    create_profile!("bbb")
+    create_profile!("aaa")
+    create_profile!(nil)
+
+    create_post!("scored one", %{score: 2})
+    create_post!("scored two", %{score: 3})
+
+    assert [
+             %Author{
+               id: first_author_id,
+               total_profiles: 3,
+               total_profiles_plus_one: 4,
+               total_post_score: 5,
+               has_any_profile: true,
+               first_profile_description: "aaa",
+               profile_descriptions: ["aaa", "bbb"]
+             },
+             %Author{
+               id: second_author_id,
+               total_profiles: 3,
+               total_profiles_plus_one: 4,
+               total_post_score: 5,
+               has_any_profile: true,
+               first_profile_description: "aaa",
+               profile_descriptions: ["aaa", "bbb"]
+             }
+           ] =
+             [first_author, second_author]
+             |> Ash.load!([
+               :total_profiles,
+               :total_profiles_plus_one,
+               :total_post_score,
+               :has_any_profile,
+               :first_profile_description,
+               :profile_descriptions
+             ])
+
+    assert first_author_id == first_author.id
+    assert second_author_id == second_author.id
+  end
+
   test "calculations can reference related aggregates" do
     post = create_post!("with aggregate calculation", %{score: 3})
     empty_post = create_post!("without aggregate calculation", %{score: 7})
@@ -649,6 +694,12 @@ defmodule AshSqlite.AggregatesTest do
     Post
     |> Ash.Changeset.for_create(:create, Map.put(attrs, :title, title))
     |> Ash.Changeset.manage_relationship(:author, author, type: :append_and_remove)
+    |> Ash.create!()
+  end
+
+  defp create_profile!(description) do
+    Profile
+    |> Ash.Changeset.for_create(:create, %{description: description})
     |> Ash.create!()
   end
 
