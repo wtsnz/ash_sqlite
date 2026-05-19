@@ -302,6 +302,10 @@ defmodule AshSqlite.Test.Post do
     count :count_of_linked_posts_with_join_filter, :linked_posts do
       join_filter(:linked_posts, expr(title == "match"))
     end
+
+    count :count_of_linked_posts_with_author, :linked_posts do
+      filter(expr(not is_nil(author.id)))
+    end
   end
 
   calculations do

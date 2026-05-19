@@ -527,33 +527,38 @@ defmodule AshSqlite.Aggregate do
   end
 
   defp many_to_many_window_aggregate_query(parent_query, relationship, aggregate, binding) do
-    through_binding = binding + 1
-
     with {:ok, query} <-
            related_window_query(parent_query, relationship, aggregate, binding, [
              relationship.name
-           ]),
-         {:ok, through_query} <- through_query(parent_query, relationship, through_binding) do
-      root_binding = query.__ash_bindings__.root_binding
-      through_query = Ecto.Query.subquery(through_query)
+           ]) do
+      through_binding = query.__ash_bindings__.current
 
-      query =
-        from(row in query,
-          join: through in ^through_query,
-          as: ^through_binding,
-          on:
-            field(through, ^relationship.destination_attribute_on_join_resource) ==
-              field(as(^root_binding), ^relationship.destination_attribute)
+      with {:ok, through_query} <- through_query(parent_query, relationship, through_binding) do
+        root_binding = query.__ash_bindings__.root_binding
+        through_query = Ecto.Query.subquery(through_query)
+
+        query =
+          from(row in query,
+            join: through in ^through_query,
+            as: ^through_binding,
+            on:
+              field(through, ^relationship.destination_attribute_on_join_resource) ==
+                field(as(^root_binding), ^relationship.destination_attribute)
+          )
+          |> AshSql.Bindings.add_binding(%{
+            type: :through,
+            relationship: relationship
+          })
+
+        window_aggregate_query(
+          query,
+          aggregate,
+          relationship.source_attribute_on_join_resource,
+          through_binding,
+          root_binding,
+          relationship
         )
-
-      window_aggregate_query(
-        query,
-        aggregate,
-        relationship.source_attribute_on_join_resource,
-        through_binding,
-        root_binding,
-        relationship
-      )
+      end
     end
   end
 
@@ -612,37 +617,42 @@ defmodule AshSqlite.Aggregate do
   end
 
   defp many_to_many_aggregate_query(parent_query, relationship, aggregates, binding) do
-    through_binding = binding + 1
-
     with {:ok, query} <-
-           related_query(parent_query, relationship, hd(aggregates), binding, [relationship.name]),
-         {:ok, through_query} <- through_query(parent_query, relationship, through_binding) do
-      root_binding = query.__ash_bindings__.root_binding
-      through_query = Ecto.Query.subquery(through_query)
+           related_query(parent_query, relationship, hd(aggregates), binding, [relationship.name]) do
+      through_binding = query.__ash_bindings__.current
 
-      query =
-        from(row in query,
-          join: through in ^through_query,
-          as: ^through_binding,
-          on:
-            field(through, ^relationship.destination_attribute_on_join_resource) ==
-              field(as(^root_binding), ^relationship.destination_attribute),
-          group_by: field(through, ^relationship.source_attribute_on_join_resource),
-          select: %{
-            ^relationship.source_attribute_on_join_resource =>
-              field(through, ^relationship.source_attribute_on_join_resource)
-          }
-        )
+      with {:ok, through_query} <- through_query(parent_query, relationship, through_binding) do
+        root_binding = query.__ash_bindings__.root_binding
+        through_query = Ecto.Query.subquery(through_query)
 
-      Enum.reduce_while(aggregates, {:ok, query}, fn aggregate, {:ok, query} ->
-        case aggregate_dynamic(query, relationship, aggregate, root_binding) do
-          {:ok, query, dynamic} ->
-            {:cont, {:ok, Ecto.Query.select_merge(query, ^%{aggregate.name => dynamic})}}
+        query =
+          from(row in query,
+            join: through in ^through_query,
+            as: ^through_binding,
+            on:
+              field(through, ^relationship.destination_attribute_on_join_resource) ==
+                field(as(^root_binding), ^relationship.destination_attribute),
+            group_by: field(through, ^relationship.source_attribute_on_join_resource),
+            select: %{
+              ^relationship.source_attribute_on_join_resource =>
+                field(through, ^relationship.source_attribute_on_join_resource)
+            }
+          )
+          |> AshSql.Bindings.add_binding(%{
+            type: :through,
+            relationship: relationship
+          })
 
-          {:error, error} ->
-            {:halt, {:error, error}}
-        end
-      end)
+        Enum.reduce_while(aggregates, {:ok, query}, fn aggregate, {:ok, query} ->
+          case aggregate_dynamic(query, relationship, aggregate, root_binding) do
+            {:ok, query, dynamic} ->
+              {:cont, {:ok, Ecto.Query.select_merge(query, ^%{aggregate.name => dynamic})}}
+
+            {:error, error} ->
+              {:halt, {:error, error}}
+          end
+        end)
+      end
     end
   end
 

@@ -550,6 +550,17 @@ defmodule AshSqlite.AggregatesTest do
     assert loaded_empty.has_linked_post_called_match == false
   end
 
+  test "many_to_many aggregates with filters that require joins can be loaded" do
+    source = create_post!("source")
+    author = create_author!("John", "Doe")
+    linked = create_post_for_author!(author, "linked")
+
+    link_posts!(source, [linked])
+
+    assert %{count_of_linked_posts_with_author: 1} =
+             Ash.load!(source, :count_of_linked_posts_with_author)
+  end
+
   test "many_to_many aggregates can be filtered, sorted and used in calculations" do
     one_link = create_post!("one link", %{score: 1})
     two_links = create_post!("two links", %{score: 2})
