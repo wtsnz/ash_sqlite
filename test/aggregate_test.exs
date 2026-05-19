@@ -286,13 +286,13 @@ defmodule AshSqlite.AggregatesTest do
     end
   end
 
-  test "multi-hop aggregate relationships return stable unsupported errors" do
-    post = create_post!("unsupported relationships")
-    create_comment!(post, "comment", 1)
+  test "multi-hop aggregate relationships can be loaded through normal paths" do
+    post = create_post!("post multi-hop")
+    comment = create_comment!(post, "comment", 1)
+    create_comment_rating!(comment, 7)
 
-    assert_raise Ash.Error.Unknown, ~r/one relationship/, fn ->
-      Ash.load!(post, :count_of_comment_ratings)
-    end
+    assert %{count_of_comment_ratings: 1} =
+             Ash.load!(post, :count_of_comment_ratings)
   end
 
   test "calculations can reference related aggregates" do
