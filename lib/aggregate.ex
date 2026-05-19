@@ -93,6 +93,8 @@ defmodule AshSqlite.Aggregate do
     end
   end
 
+  defp supported?(%{name: name}) when not is_atom(name), do: false
+
   defp supported?(%{kind: kind, related?: false}) when kind in @supported_aggregate_kinds do
     true
   end

@@ -532,7 +532,7 @@ defmodule AshSqlite.DataLayer do
   def can?(_, :nested_expressions), do: true
 
   def can?(_, {:query_aggregate, kind})
-      when kind in [:count, :first, :sum, :max, :min, :avg, :exists, :list, :custom],
+      when kind in [:count, :first, :sum, :max, :min, :avg, :exists],
       do: true
 
   def can?(_, :sort), do: true
