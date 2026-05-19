@@ -175,16 +175,25 @@ defmodule AshSqlite.Test.Post do
   aggregates do
     count(:count_of_comments, :comments)
     count(:count_of_popular_comments, :popular_comments)
+    count(:count_of_linked_posts, :linked_posts)
     sum(:sum_of_comment_likes, :comments, :likes)
+    sum(:sum_of_linked_post_scores, :linked_posts, :score)
     avg(:avg_comment_likes, :comments, :likes)
+    avg(:avg_linked_post_score, :linked_posts, :score)
     min(:min_comment_likes, :comments, :likes)
+    min(:min_linked_post_score, :linked_posts, :score)
     max(:max_comment_likes, :comments, :likes)
+    max(:max_linked_post_score, :linked_posts, :score)
 
     count :count_of_comments_called_match, :comments do
       filter(expr(title == "match"))
     end
 
     exists :has_comment_called_match, :comments do
+      filter(expr(title == "match"))
+    end
+
+    exists :has_linked_post_called_match, :linked_posts do
       filter(expr(title == "match"))
     end
   end
@@ -198,6 +207,12 @@ defmodule AshSqlite.Test.Post do
       :comment_likes_with_score,
       :integer,
       expr((sum_of_comment_likes || 0) + (score || 0))
+    )
+
+    calculate(
+      :linked_post_score_with_score,
+      :integer,
+      expr((sum_of_linked_post_scores || 0) + (score || 0))
     )
 
     calculate(:category_label, :string, expr("(" <> category <> ")"))
