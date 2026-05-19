@@ -295,6 +295,100 @@ defmodule AshSqlite.AggregatesTest do
              Ash.load!(post, :count_of_comment_ratings)
   end
 
+  test "first aggregates can be loaded" do
+    post = create_post!("first aggregate")
+    empty_post = create_post!("first aggregate empty")
+
+    create_comment!(post, nil, 1)
+    create_comment!(post, "bbb", 1)
+    create_comment!(post, "aaa", 1)
+    create_comment!(post, "stuff", 1)
+
+    loaded_post =
+      Ash.load!(post, [
+        :first_comment,
+        :first_comment_nils_first,
+        :first_comment_nils_first_called_stuff,
+        :first_comment_nils_first_include_nil
+      ])
+
+    assert loaded_post.first_comment == "aaa"
+    assert loaded_post.first_comment_nils_first == "aaa"
+    assert loaded_post.first_comment_nils_first_called_stuff == "stuff"
+    assert loaded_post.first_comment_nils_first_include_nil == nil
+
+    assert %{first_comment: nil} = Ash.load!(empty_post, :first_comment)
+  end
+
+  test "first aggregates can be sorted and used over belongs_to and multi-hop paths" do
+    author = create_author!("Belongs", "To")
+    author_post = create_post_for_author!(author, "belongs to first")
+
+    low = create_post!("low first")
+    high = create_post!("high first")
+
+    create_comment!(low, "aaa", 1)
+    create_comment!(high, "zzz", 1)
+
+    assert [
+             %Post{id: low_id, first_comment: "aaa"},
+             %Post{id: high_id, first_comment: "zzz"}
+           ] =
+             Post
+             |> Ash.Query.load(:first_comment)
+             |> Ash.Query.filter(count_of_comments > 0)
+             |> Ash.Query.sort(first_comment: :asc)
+             |> Ash.read!()
+
+    assert low_id == low.id
+    assert high_id == high.id
+
+    assert %{author_first_name: "Belongs"} = Ash.load!(author_post, :author_first_name)
+
+    comment = create_comment!(high, "rated", 1)
+    create_comment_rating!(comment, 3)
+    create_comment_rating!(comment, 10)
+
+    assert %{highest_rating: 10} = Ash.load!(high, :highest_rating)
+  end
+
+  test "list aggregates can be loaded" do
+    post = create_post!("list aggregate")
+    empty_post = create_post!("list aggregate empty")
+
+    first = create_comment!(post, "bbb", 1)
+    create_comment!(post, nil, 1)
+    create_comment!(post, "aaa", 7)
+    create_comment!(post, "aaa", 9)
+
+    loaded_post =
+      Ash.load!(post, [
+        :comment_titles,
+        :comment_titles_with_nils,
+        :uniq_comment_titles,
+        :comment_titles_with_5_likes,
+        :comment_ids
+      ])
+
+    assert loaded_post.comment_titles == ["aaa", "aaa", "bbb"]
+    assert loaded_post.comment_titles_with_nils == ["aaa", "aaa", "bbb", nil]
+    assert loaded_post.uniq_comment_titles == ["aaa", "bbb"]
+    assert loaded_post.comment_titles_with_5_likes == ["aaa", "aaa"]
+    assert first.id in loaded_post.comment_ids
+
+    assert %{comment_titles: []} = Ash.load!(empty_post, :comment_titles)
+  end
+
+  test "custom aggregates can use sqlite-specific implementations" do
+    post = create_post!("custom aggregate")
+
+    create_comment!(post, "aaa", 1)
+    create_comment!(post, "bbb", 1)
+
+    assert %{comment_titles_joined: joined} = Ash.load!(post, :comment_titles_joined)
+    assert joined |> String.split(",") |> Enum.sort() == ["aaa", "bbb"]
+  end
+
   test "calculations can reference related aggregates" do
     post = create_post!("with aggregate calculation", %{score: 3})
     empty_post = create_post!("without aggregate calculation", %{score: 7})
@@ -558,9 +652,9 @@ defmodule AshSqlite.AggregatesTest do
     |> Ash.create!()
   end
 
-  defp create_comment!(post, title, likes) do
+  defp create_comment!(post, title, likes, attrs \\ %{}) do
     Comment
-    |> Ash.Changeset.for_create(:create, %{title: title, likes: likes})
+    |> Ash.Changeset.for_create(:create, Map.merge(attrs, %{title: title, likes: likes}))
     |> Ash.Changeset.manage_relationship(:post, post, type: :append_and_remove)
     |> Ash.create!()
   end

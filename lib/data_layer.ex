@@ -470,7 +470,7 @@ defmodule AshSqlite.DataLayer do
   def can?(_, :boolean_filter), do: true
 
   def can?(_, {:aggregate, type})
-      when type in [:count, :sum, :avg, :max, :min, :exists],
+      when type in [:count, :sum, :avg, :max, :min, :exists, :first, :list, :custom],
       do: true
 
   def can?(_, :aggregate_filter), do: true
@@ -529,7 +529,7 @@ defmodule AshSqlite.DataLayer do
   def can?(_, :nested_expressions), do: true
 
   def can?(_, {:query_aggregate, kind})
-      when kind in [:count, :first, :sum, :max, :min, :avg, :exists],
+      when kind in [:count, :first, :sum, :max, :min, :avg, :exists, :list, :custom],
       do: true
 
   def can?(_, :sort), do: true

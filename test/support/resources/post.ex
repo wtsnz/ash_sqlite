@@ -192,6 +192,63 @@ defmodule AshSqlite.Test.Post do
     max(:max_comment_likes, :comments, :likes)
     max(:max_linked_post_score, :linked_posts, :score)
 
+    first :first_comment, :comments, :title do
+      sort(title: :asc_nils_last)
+    end
+
+    first :first_comment_nils_first, :comments, :title do
+      sort(title: :asc_nils_first)
+    end
+
+    first :first_comment_nils_first_called_stuff, :comments, :title do
+      sort(title: :asc_nils_first)
+      filter(expr(title == "stuff"))
+    end
+
+    first :first_comment_nils_first_include_nil, :comments, :title do
+      include_nil?(true)
+      sort(title: :asc_nils_first)
+    end
+
+    first :last_comment, :comments, :title do
+      sort(title: :desc)
+    end
+
+    first :latest_comment_created_at, :comments, :created_at do
+      sort(created_at: :desc)
+    end
+
+    first :highest_rating, [:comments, :ratings], :score do
+      sort(score: :desc)
+    end
+
+    first(:author_first_name, :author, :first_name)
+
+    list :comment_titles, :comments, :title do
+      sort(title: :asc_nils_last)
+    end
+
+    list :comment_titles_with_nils, :comments, :title do
+      sort(title: :asc_nils_last)
+      include_nil?(true)
+    end
+
+    list :uniq_comment_titles, :comments, :title do
+      uniq?(true)
+      sort(title: :asc_nils_last)
+    end
+
+    list :comment_titles_with_5_likes, :comments, :title do
+      sort(title: :asc_nils_last)
+      filter(expr(likes >= 5))
+    end
+
+    list(:comment_ids, :comments, :id)
+
+    custom(:comment_titles_joined, :comments, :string) do
+      implementation({AshSqlite.Test.StringAgg, field: :title, delimiter: ","})
+    end
+
     count :count_of_comments_called_match, :comments do
       filter(expr(title == "match"))
     end
