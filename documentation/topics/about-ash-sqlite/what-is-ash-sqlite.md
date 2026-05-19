@@ -6,7 +6,7 @@ SPDX-License-Identifier: MIT
 
 # What is AshSqlite?
 
-AshSqlite is the SQLite `Ash.DataLayer` for [Ash Framework](https://hexdocs.pm/ash). This doesn't have all of the features of [AshPostgres](https://hexdocs.pm/ash_postgres), but it does support most of the features of Ash data layers. Related `count`, `sum`, `avg`, `min`, `max`, and `exists` aggregates can be loaded, filtered, sorted, and used in expression calculations over a single relationship. Full aggregate parity with AshPostgres is not available yet; unsupported cases include `first`, `list`, `custom`, unrelated aggregates, manual relationships, many-to-many relationships, and parent-dependent relationship filters.
+AshSqlite is the SQLite `Ash.DataLayer` for [Ash Framework](https://hexdocs.pm/ash). This doesn't have all of the features of [AshPostgres](https://hexdocs.pm/ash_postgres), but it does support most of the features of Ash data layers. Related `count`, `sum`, `avg`, `min`, `max`, and `exists` aggregates can be loaded, filtered, sorted, and used in expression calculations over a single relationship, including many-to-many relationships. Full aggregate parity with AshPostgres is not available yet; unsupported cases include `first`, `list`, `custom`, unrelated aggregates, manual relationships, multi-hop relationships, and parent-dependent relationship filters.
 
 Use this to persist records in a SQLite table. For example, the resource below would be persisted in a table called `tweets`:
 
