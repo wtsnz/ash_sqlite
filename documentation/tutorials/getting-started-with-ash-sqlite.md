@@ -326,9 +326,9 @@ Helpdesk.Support.Ticket
 
 ### Aggregates
 
-AshSqlite supports loading related `count`, `sum`, `avg`, `min`, `max`, and `exists` aggregates over a single relationship.
+AshSqlite supports loading related `count`, `sum`, `avg`, `min`, `max`, and `exists` aggregates over a single normal relationship. Aggregate filters and aggregate `join_filter`s are supported when they do not depend on parent row values.
 
-Full aggregate parity with [ash_postgres](https://github.com/ash-project/ash_postgres) is not available yet. Unsupported cases include `first`, `list`, `custom`, unrelated aggregates, manual relationships, many-to-many relationships, parent-dependent relationship filters, aggregate sorting, and calculations that reference aggregates.
+Full aggregate parity with [ash_postgres](https://github.com/ash-project/ash_postgres) is not available yet. Unsupported cases include `first`, `list`, `custom`, unrelated aggregates, manual relationships, `no_attributes?` relationships, many-to-many relationships, multi-hop relationships, parent-dependent relationship filters, parent-dependent aggregate filters, parent-dependent `join_filter`s, aggregate filters that reference other aggregates, fanout-prone `sum`, `avg`, or field-based `count` aggregate filters over to-many relationship references, aggregate sorting, and calculations that reference aggregates.
 
 
 ### Rich Configuration Options
