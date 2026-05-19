@@ -96,6 +96,55 @@ defmodule AshSqlite.AggregatesTest do
              Ash.load!(post, :count_of_popular_comments)
   end
 
+  test "resource queries can sort by related aggregates" do
+    one_comment = create_post!("one comment")
+    two_comments = create_post!("two comments")
+    no_comments = create_post!("no comments")
+
+    create_comment!(one_comment, "only", 1)
+    create_comment!(two_comments, "first", 1)
+    create_comment!(two_comments, "second", 1)
+
+    assert [
+             %Post{id: two_comments_id, count_of_comments: 2},
+             %Post{id: one_comment_id, count_of_comments: 1},
+             %Post{id: no_comments_id, count_of_comments: 0}
+           ] =
+             Post
+             |> Ash.Query.load(:count_of_comments)
+             |> Ash.Query.sort(count_of_comments: :desc)
+             |> Ash.read!()
+
+    assert two_comments_id == two_comments.id
+    assert one_comment_id == one_comment.id
+    assert no_comments_id == no_comments.id
+  end
+
+  test "aggregate sorting works with pagination and aggregate filters" do
+    one_comment = create_post!("one comment")
+    two_comments = create_post!("two comments")
+    three_comments = create_post!("three comments")
+    create_post!("no comments")
+
+    create_comment!(one_comment, "only", 1)
+    create_comment!(two_comments, "first", 1)
+    create_comment!(two_comments, "second", 1)
+    create_comment!(three_comments, "first", 1)
+    create_comment!(three_comments, "second", 1)
+    create_comment!(three_comments, "third", 1)
+
+    assert [%Post{id: two_comments_id, count_of_comments: 2}] =
+             Post
+             |> Ash.Query.load(:count_of_comments)
+             |> Ash.Query.filter(count_of_comments > 0)
+             |> Ash.Query.sort(count_of_comments: :desc)
+             |> Ash.Query.limit(1)
+             |> Ash.Query.offset(1)
+             |> Ash.read!()
+
+    assert two_comments_id == two_comments.id
+  end
+
   test "resource queries can filter on related aggregates" do
     post = create_post!("with comments")
     create_comment!(post, "match", 1)
