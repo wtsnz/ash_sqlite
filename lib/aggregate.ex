@@ -74,7 +74,7 @@ defmodule AshSqlite.Aggregate do
 
   defp supported?(%{kind: kind, related?: related?, relationship_path: path})
        when kind in [:count, :sum, :avg, :max, :min, :exists] do
-    related? != false && match?([_], path)
+    related? != false && match?([_ | _], path)
   end
 
   defp supported?(_), do: false
@@ -217,43 +217,65 @@ defmodule AshSqlite.Aggregate do
     end
   end
 
-  defp add_aggregate_group(query, resource, [relationship_name], aggregates) do
-    relationship = Ash.Resource.Info.relationship(resource, relationship_name)
-
-    cond do
-      is_nil(relationship) ->
-        {:error, "No such relationship #{inspect(resource)}.#{relationship_name}"}
-
-      match?(%{manual: {_, _}}, relationship) ->
-        {:error, "AshSqlite does not support loading aggregates over manual relationships"}
-
-      Map.get(relationship, :no_attributes?, false) ->
-        {:error,
-         "AshSqlite does not support loading aggregates over no_attributes? relationships"}
-
-      relationship_filter_uses_parent?(relationship) ->
-        {:error,
-         "AshSqlite does not support loading aggregates over relationships with parent-dependent filters"}
-
-      join_relationship_filter_uses_parent?(relationship) ->
-        {:error,
-         "AshSqlite does not support loading aggregates over many_to_many relationships with parent-dependent join filters"}
-
-      true ->
-        do_add_aggregate_group(query, relationship, aggregates)
+  defp add_aggregate_group(query, resource, relationship_path, aggregates) do
+    with {:ok, relationships} <- relationships(resource, relationship_path),
+         :ok <- validate_relationships(resource, relationship_path, relationships) do
+      do_add_aggregate_group(query, relationships, aggregates)
     end
   end
 
-  defp add_aggregate_group(_query, resource, relationship_path, _aggregates) do
-    {:error,
-     "AshSqlite only supports loading aggregates over one relationship from #{inspect(resource)}, got: #{inspect(relationship_path)}"}
+  defp relationships(resource, relationship_path) do
+    relationship_path
+    |> Enum.reduce_while({:ok, resource, []}, fn relationship_name, {:ok, resource, acc} ->
+      case Ash.Resource.Info.relationship(resource, relationship_name) do
+        nil ->
+          {:halt, {:error, "No such relationship #{inspect(resource)}.#{relationship_name}"}}
+
+        relationship ->
+          {:cont, {:ok, relationship.destination, [relationship | acc]}}
+      end
+    end)
+    |> case do
+      {:ok, _resource, relationships} -> {:ok, Enum.reverse(relationships)}
+      {:error, error} -> {:error, error}
+    end
   end
 
-  defp do_add_aggregate_group(query, relationship, aggregates) do
+  defp validate_relationships(resource, relationship_path, relationships) do
+    cond do
+      Enum.any?(relationships, &match?(%{manual: {_, _}}, &1)) ->
+        {:error, "AshSqlite does not support loading aggregates over manual relationships"}
+
+      Enum.any?(relationships, &Map.get(&1, :no_attributes?, false)) ->
+        {:error,
+         "AshSqlite does not support loading aggregates over no_attributes? relationships"}
+
+      Enum.any?(relationships, &relationship_filter_uses_parent?/1) ->
+        {:error,
+         "AshSqlite does not support loading aggregates over relationships with parent-dependent filters"}
+
+      Enum.any?(relationships, &join_relationship_filter_uses_parent?/1) ->
+        {:error,
+         "AshSqlite does not support loading aggregates over many_to_many relationships with parent-dependent join filters"}
+
+      length(relationships) > 1 && Enum.any?(relationships, &(&1.type == :many_to_many)) ->
+        {:error,
+         "AshSqlite does not support loading aggregates over multi-hop paths that include many_to_many relationships"}
+
+      Enum.empty?(relationships) ->
+        {:error,
+         "AshSqlite only supports loading aggregates over a relationship path from #{inspect(resource)}, got: #{inspect(relationship_path)}"}
+
+      true ->
+        :ok
+    end
+  end
+
+  defp do_add_aggregate_group(query, [first_relationship | _] = relationships, aggregates) do
     binding = query.__ash_bindings__.current
 
     with {:ok, aggregate_query} <-
-           aggregate_query(query, relationship, aggregates, binding) do
+           aggregate_query(query, relationships, aggregates, binding) do
       aggregate_query = Ecto.Query.subquery(aggregate_query)
       root_binding = query.__ash_bindings__.root_binding
 
@@ -262,8 +284,8 @@ defmodule AshSqlite.Aggregate do
           left_join: aggregate in ^aggregate_query,
           as: ^binding,
           on:
-            field(as(^root_binding), ^relationship.source_attribute) ==
-              field(aggregate, ^aggregate_join_attribute(relationship))
+            field(as(^root_binding), ^first_relationship.source_attribute) ==
+              field(aggregate, ^aggregate_join_attribute(first_relationship))
         )
 
       query =
@@ -282,12 +304,19 @@ defmodule AshSqlite.Aggregate do
     end
   end
 
-  defp aggregate_query(parent_query, relationship, aggregates, binding) do
-    if relationship.type == :many_to_many do
-      many_to_many_aggregate_query(parent_query, relationship, aggregates, binding)
-    else
-      related_aggregate_query(parent_query, relationship, aggregates, binding)
+  defp aggregate_query(parent_query, [relationship], aggregates, binding) do
+    relationship
+    |> case do
+      %{type: :many_to_many} ->
+        many_to_many_aggregate_query(parent_query, relationship, aggregates, binding)
+
+      relationship ->
+        related_aggregate_query(parent_query, relationship, aggregates, binding)
     end
+  end
+
+  defp aggregate_query(parent_query, relationships, aggregates, binding) do
+    multi_hop_aggregate_query(parent_query, relationships, aggregates, binding)
   end
 
   defp related_aggregate_query(parent_query, relationship, aggregates, binding) do
@@ -349,8 +378,109 @@ defmodule AshSqlite.Aggregate do
     end
   end
 
+  defp multi_hop_aggregate_query(parent_query, relationships, aggregates, binding) do
+    final_relationship = List.last(relationships)
+
+    with {:ok, query} <- related_query(parent_query, final_relationship, hd(aggregates), binding),
+         {:ok, query, first_related_binding} <-
+           join_intermediate_relationships(parent_query, query, relationships) do
+      first_relationship = hd(relationships)
+
+      query =
+        from(row in query,
+          group_by: field(as(^first_related_binding), ^first_relationship.destination_attribute),
+          select: %{
+            ^first_relationship.destination_attribute =>
+              field(as(^first_related_binding), ^first_relationship.destination_attribute)
+          }
+        )
+
+      root_binding = query.__ash_bindings__.root_binding
+
+      Enum.reduce_while(aggregates, {:ok, query}, fn aggregate, {:ok, query} ->
+        case aggregate_dynamic(query, final_relationship, aggregate, root_binding) do
+          {:ok, query, dynamic} ->
+            {:cont, {:ok, Ecto.Query.select_merge(query, ^%{aggregate.name => dynamic})}}
+
+          {:error, error} ->
+            {:halt, {:error, error}}
+        end
+      end)
+    end
+  end
+
+  defp join_intermediate_relationships(parent_query, query, relationships) do
+    relationships
+    |> Enum.zip(tl(relationships))
+    |> Enum.reverse()
+    |> Enum.reduce_while(
+      {:ok, query, query.__ash_bindings__.root_binding, query.__ash_bindings__.current, nil},
+      fn {relationship, next_relationship},
+         {:ok, query, current_binding, next_binding, _first_related_binding} ->
+        case intermediate_query(parent_query, relationship, next_binding) do
+          {:ok, related_query} ->
+            related_query = Ecto.Query.subquery(related_query)
+
+            query =
+              from(row in query,
+                join: related in ^related_query,
+                as: ^next_binding,
+                on:
+                  field(related, ^next_relationship.source_attribute) ==
+                    field(as(^current_binding), ^next_relationship.destination_attribute)
+              )
+
+            {:cont, {:ok, query, next_binding, next_binding + 1, next_binding}}
+
+          {:error, error} ->
+            {:halt, {:error, error}}
+        end
+      end
+    )
+    |> case do
+      {:ok, query, _current_binding, _next_binding, first_related_binding}
+      when not is_nil(first_related_binding) ->
+        {:ok, query, first_related_binding}
+
+      {:ok, _query, _current_binding, _next_binding, nil} ->
+        {:error, "AshSqlite could not build multi-hop aggregate joins"}
+
+      {:error, error} ->
+        {:error, error}
+    end
+  end
+
   defp related_query(parent_query, relationship, aggregate, binding) do
     aggregate.query
+    |> Ash.Query.unset([:filter, :sort, :distinct, :select, :limit, :offset])
+    |> Ash.Query.set_context(relationship.context)
+    |> Ash.Query.do_filter(relationship.filter, parent_stack: [relationship.source])
+    |> Ash.Query.set_context(%{
+      data_layer: %{
+        start_bindings_at: binding,
+        parent_bindings: parent_query.__ash_bindings__
+      }
+    })
+    |> Ash.Query.data_layer_query(run_return_query?: false)
+    |> case do
+      {:ok, query} ->
+        {:ok,
+         query
+         |> Ecto.Query.exclude(:select)
+         |> Ecto.Query.exclude(:order_by)}
+
+      {:error, error} ->
+        {:error, error}
+    end
+  end
+
+  defp intermediate_query(parent_query, relationship, binding) do
+    read_action =
+      relationship.read_action ||
+        Ash.Resource.Info.primary_action!(relationship.destination, :read).name
+
+    relationship.destination
+    |> Ash.Query.for_read(read_action)
     |> Ash.Query.unset([:filter, :sort, :distinct, :select, :limit, :offset])
     |> Ash.Query.set_context(relationship.context)
     |> Ash.Query.do_filter(relationship.filter, parent_stack: [relationship.source])

@@ -31,6 +31,18 @@ defmodule AshSqlite.Test.Author do
     has_many(:posts, AshSqlite.Test.Post, public?: true)
   end
 
+  aggregates do
+    count(:count_of_comments_through_posts, [:posts, :comments])
+    sum(:sum_of_comment_likes_through_posts, [:posts, :comments], :likes)
+    avg(:avg_comment_likes_through_posts, [:posts, :comments], :likes)
+    min(:min_comment_likes_through_posts, [:posts, :comments], :likes)
+    max(:max_comment_likes_through_posts, [:posts, :comments], :likes)
+
+    exists :has_comment_called_match_through_posts, [:posts, :comments] do
+      filter(expr(title == "match"))
+    end
+  end
+
   calculations do
     calculate(:title, :string, expr(bio[:title]))
     calculate(:full_name, :string, expr(first_name <> " " <> last_name))
@@ -76,5 +88,11 @@ defmodule AshSqlite.Test.Author do
     end
 
     calculate(:post_titles, {:array, :string}, expr(list(posts, field: :title)))
+
+    calculate(
+      :comment_likes_through_posts_plus_one,
+      :integer,
+      expr((sum_of_comment_likes_through_posts || 0) + 1)
+    )
   end
 end
