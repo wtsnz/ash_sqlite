@@ -163,6 +163,41 @@ defmodule AshSqlite.AggregatesTest do
     assert post_id == post.id
   end
 
+  test "resource queries can filter and sort on related aggregates without loading them" do
+    one_comment = create_post!("one unloaded comment")
+    two_comments = create_post!("two unloaded comments")
+    create_post!("no unloaded comments")
+
+    create_comment!(one_comment, "only", 1)
+    create_comment!(two_comments, "first", 1)
+    create_comment!(two_comments, "second", 1)
+
+    assert [%Post{id: two_comments_id}, %Post{id: one_comment_id}] =
+             Post
+             |> Ash.Query.filter(count_of_comments > 0)
+             |> Ash.Query.sort(count_of_comments: :desc)
+             |> Ash.read!()
+
+    assert two_comments_id == two_comments.id
+    assert one_comment_id == one_comment.id
+  end
+
+  test "list loads related aggregates" do
+    post = create_post!("list load")
+    empty_post = create_post!("list load empty")
+
+    create_comment!(post, "first", 1)
+    create_comment!(post, "second", 1)
+
+    assert [
+             %Post{id: post_id, count_of_comments: 2},
+             %Post{id: empty_post_id, count_of_comments: 0}
+           ] = Ash.load!([post, empty_post], :count_of_comments)
+
+    assert post_id == post.id
+    assert empty_post_id == empty_post.id
+  end
+
   test "aggregate join filters are applied on one-hop relationships" do
     post = create_post!("join filter")
 
