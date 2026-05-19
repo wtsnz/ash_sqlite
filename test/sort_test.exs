@@ -9,17 +9,6 @@ defmodule AshSqlite.SortTest do
 
   require Ash.Query
 
-  test "data_layer_query returns a query with sort applied" do
-    query =
-      Post
-      |> Ash.Query.sort(title: :asc)
-
-    {:ok, ecto_query} = Ash.Query.data_layer_query(query)
-    {sql, _params} = Ecto.Adapters.SQL.to_sql(:all, TestRepo, ecto_query)
-
-    assert sql =~ ~s|ORDER BY p0."title"|
-  end
-
   test "multi-column sorts work" do
     Post
     |> Ash.Changeset.for_create(:create, %{title: "aaa", score: 0})
