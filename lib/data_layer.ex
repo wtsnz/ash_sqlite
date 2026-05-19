@@ -2071,9 +2071,8 @@ defmodule AshSqlite.DataLayer do
       end)
       |> Enum.uniq()
 
-    if Enum.any?(aggregates) do
-      {:error, "AshSqlite does not support calculations that reference aggregates yet"}
-    else
+    with {:ok, query} <-
+           AshSqlite.Aggregate.add_aggregates(query, aggregates, resource, select?: false) do
       AshSql.Calculation.add_calculations(query, calculations, resource, 0, true)
     end
   end

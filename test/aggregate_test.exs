@@ -260,9 +260,37 @@ defmodule AshSqlite.AggregatesTest do
     end
   end
 
-  defp create_post!(title) do
+  test "calculations can reference related aggregates" do
+    post = create_post!("with aggregate calculation", %{score: 3})
+    empty_post = create_post!("without aggregate calculation", %{score: 7})
+
+    create_comment!(post, "first", 4)
+    create_comment!(post, "second", 6)
+
+    assert [
+             %Post{
+               id: post_id,
+               has_comments: true,
+               comment_likes_with_score: 13
+             },
+             %Post{
+               id: empty_post_id,
+               has_comments: false,
+               comment_likes_with_score: 7
+             }
+           ] =
+             Post
+             |> Ash.Query.load([:has_comments, :comment_likes_with_score])
+             |> Ash.Query.sort(comment_likes_with_score: :desc)
+             |> Ash.read!()
+
+    assert post_id == post.id
+    assert empty_post_id == empty_post.id
+  end
+
+  defp create_post!(title, attrs \\ %{}) do
     Post
-    |> Ash.Changeset.for_create(:create, %{title: title})
+    |> Ash.Changeset.for_create(:create, Map.put(attrs, :title, title))
     |> Ash.create!()
   end
 
