@@ -590,33 +590,11 @@ defmodule AshSqlite.DataLayer do
 
   @impl true
   def return_query(query, resource) do
-    # AshSql.Query.return_query/2 also normalizes bindings. Do it here first so
-    # aggregate prebinding can inspect sort/load metadata before return_query
-    # consumes it.
     query =
       query
       |> AshSql.Bindings.default_bindings(resource, AshSqlite.SqlImplementation)
 
-    load_aggregates = query.__ash_bindings__[:load_aggregates] || []
-
-    query_without_aggregates =
-      Map.update!(query, :__ash_bindings__, &Map.put(&1, :load_aggregates, []))
-
-    with {:ok, query_without_aggregates} <-
-           AshSql.Aggregate.Grouped.add_sort_aggregates(
-             query_without_aggregates,
-             query_without_aggregates.__ash_bindings__[:sort],
-             resource
-           ),
-         {:ok, query} <- AshSql.Query.return_query(query_without_aggregates, resource) do
-      AshSql.Aggregate.add_aggregates(
-        query,
-        load_aggregates,
-        resource,
-        true,
-        query.__ash_bindings__.root_binding
-      )
-    end
+    AshSql.Query.return_query(query, resource)
   end
 
   @impl true
@@ -635,14 +613,7 @@ defmodule AshSqlite.DataLayer do
       if query.__ash_bindings__[:sort_applied?] do
         {:ok, query}
       else
-        with {:ok, query} <-
-               AshSql.Aggregate.Grouped.add_sort_aggregates(
-                 query,
-                 query.__ash_bindings__[:sort],
-                 resource
-               ) do
-          AshSql.Sort.apply_sort(query, query.__ash_bindings__[:sort], resource)
-        end
+        AshSql.Sort.apply_sort(query, query.__ash_bindings__[:sort], resource)
       end
 
     case with_sort_applied do
