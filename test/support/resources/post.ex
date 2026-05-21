@@ -257,6 +257,16 @@ defmodule AshSqlite.Test.Post do
       sort(title: :asc_nils_last)
     end
 
+    list :comment_titles_with_empty_default, :comments, :title do
+      default([])
+      sort(title: :asc_nils_last)
+    end
+
+    list :comment_titles_with_string_default, :comments, :title do
+      default(["fallback"])
+      sort(title: :asc_nils_last)
+    end
+
     list :comment_titles_with_nils, :comments, :title do
       sort(title: :asc_nils_last)
       include_nil?(true)
@@ -278,6 +288,14 @@ defmodule AshSqlite.Test.Post do
     end
 
     list(:comment_ids, :comments, :id)
+
+    list :comment_ids_with_default, :comments, :id do
+      default(["11111111-1111-1111-1111-111111111111"])
+    end
+
+    list :comment_likes_with_integer_default, :comments, :likes do
+      default([42])
+    end
 
     list :linked_post_titles, :linked_posts, :title do
       sort(title: :asc_nils_last)

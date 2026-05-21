@@ -49,6 +49,21 @@ representatives = Helpdesk.Support.read!(Helpdesk.Support.Representative)
 Ash.load!(representatives, [:total_tickets, :ticket_subjects])
 ```
 
+## Query Aggregates
+
+AshSqlite supports root query aggregates for `count`, `sum`, `avg`, `min`, `max`,
+`first`, and `exists`.
+
+```elixir
+Helpdesk.Support.Representative
+|> Ash.Query.filter(active == true)
+|> Ash.aggregate!(count: :count)
+```
+
+Relationship query aggregates are not supported by the grouped aggregate query
+path. Define a resource aggregate and load, filter, or sort on that aggregate
+instead.
+
 ## Calculations
 
 Expression calculations can reference aggregates and be pushed down to SQLite.

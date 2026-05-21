@@ -21,6 +21,39 @@ defmodule AshSqlite.AggregatesTest do
     assert count == 2
   end
 
+  test "query aggregate kinds work" do
+    create_post!("query aggregate b", %{score: 1})
+    create_post!("query aggregate a", %{score: 3})
+    create_post!("query aggregate c", %{score: 5})
+
+    assert %{
+             count: 3,
+             sum_score: 9,
+             max_score: 5,
+             min_score: 1,
+             avg_score: 3.0,
+             first_title: "query aggregate a",
+             exists_any: true
+           } =
+             Ash.aggregate!(Post, [
+               {:count, :count},
+               {:sum_score, :sum, field: :score},
+               {:max_score, :max, field: :score},
+               {:min_score, :min, field: :score},
+               {:avg_score, :avg, field: :score},
+               {:first_title, :first, field: :title, query: [sort: [title: :asc]]},
+               {:exists_any, :exists}
+             ])
+
+    assert Post
+           |> Ash.Query.filter(title == "query aggregate b")
+           |> Ash.exists?()
+
+    refute Post
+           |> Ash.Query.filter(title == "missing query aggregate")
+           |> Ash.exists?()
+  end
+
   test "pagination returns the count" do
     Ash.Seed.seed!(%Post{title: "foo"})
     Ash.Seed.seed!(%Post{title: "foo"})
@@ -452,19 +485,40 @@ defmodule AshSqlite.AggregatesTest do
     loaded_post =
       Ash.load!(post, [
         :comment_titles,
+        :comment_titles_with_empty_default,
+        :comment_titles_with_string_default,
         :comment_titles_with_nils,
         :uniq_comment_titles,
         :comment_titles_with_5_likes,
-        :comment_ids
+        :comment_ids,
+        :comment_ids_with_default,
+        :comment_likes_with_integer_default
       ])
 
     assert loaded_post.comment_titles == ["aaa", "aaa", "bbb"]
+    assert loaded_post.comment_titles_with_empty_default == ["aaa", "aaa", "bbb"]
+    assert loaded_post.comment_titles_with_string_default == ["aaa", "aaa", "bbb"]
     assert loaded_post.comment_titles_with_nils == ["aaa", "aaa", "bbb", nil]
     assert loaded_post.uniq_comment_titles == ["aaa", "bbb"]
     assert loaded_post.comment_titles_with_5_likes == ["aaa", "aaa"]
     assert first.id in loaded_post.comment_ids
+    assert first.id in loaded_post.comment_ids_with_default
+    assert loaded_post.comment_likes_with_integer_default == [1, 1, 7, 9]
 
-    assert %{comment_titles: []} = Ash.load!(empty_post, :comment_titles)
+    assert %{
+             comment_titles: [],
+             comment_titles_with_empty_default: [],
+             comment_titles_with_string_default: ["fallback"],
+             comment_ids_with_default: ["11111111-1111-1111-1111-111111111111"],
+             comment_likes_with_integer_default: [42]
+           } =
+             Ash.load!(empty_post, [
+               :comment_titles,
+               :comment_titles_with_empty_default,
+               :comment_titles_with_string_default,
+               :comment_ids_with_default,
+               :comment_likes_with_integer_default
+             ])
   end
 
   test "custom aggregates can use sqlite-specific implementations" do

@@ -508,8 +508,8 @@ defmodule AshSqlite.DataLayer do
       Ash.Resource.Info.relationship(relationship.source, relationship.join_relationship)
 
     not is_nil(join_relationship) &&
-      not AshSqlite.Aggregate.relationship_filter_uses_parent?(relationship) &&
-      not AshSqlite.Aggregate.relationship_filter_uses_parent?(join_relationship) &&
+      not AshSql.Aggregate.Grouped.relationship_filter_uses_parent?(relationship) &&
+      not AshSql.Aggregate.Grouped.relationship_filter_uses_parent?(join_relationship) &&
       can?(relationship.source, {:join, relationship.through}) &&
       can?(relationship.through, {:join, relationship.destination})
   end
@@ -518,7 +518,7 @@ defmodule AshSqlite.DataLayer do
 
   def can?(_, {:aggregate_relationship, relationship})
       when not is_nil(relationship.filter) do
-    not AshSqlite.Aggregate.relationship_filter_uses_parent?(relationship) &&
+    not AshSql.Aggregate.Grouped.relationship_filter_uses_parent?(relationship) &&
       can?(relationship.source, {:join, relationship.destination})
   end
 
@@ -603,13 +603,19 @@ defmodule AshSqlite.DataLayer do
       Map.update!(query, :__ash_bindings__, &Map.put(&1, :load_aggregates, []))
 
     with {:ok, query_without_aggregates} <-
-           AshSqlite.Aggregate.add_sort_aggregates(
+           AshSql.Aggregate.Grouped.add_sort_aggregates(
              query_without_aggregates,
              query_without_aggregates.__ash_bindings__[:sort],
              resource
            ),
          {:ok, query} <- AshSql.Query.return_query(query_without_aggregates, resource) do
-      AshSqlite.Aggregate.add_aggregates(query, load_aggregates, resource)
+      AshSql.Aggregate.add_aggregates(
+        query,
+        load_aggregates,
+        resource,
+        true,
+        query.__ash_bindings__.root_binding
+      )
     end
   end
 
@@ -630,7 +636,7 @@ defmodule AshSqlite.DataLayer do
         {:ok, query}
       else
         with {:ok, query} <-
-               AshSqlite.Aggregate.add_sort_aggregates(
+               AshSql.Aggregate.Grouped.add_sort_aggregates(
                  query,
                  query.__ash_bindings__[:sort],
                  resource
@@ -2049,10 +2055,11 @@ defmodule AshSqlite.DataLayer do
     |> case do
       {:ok, query} ->
         query
-        |> AshSqlite.Aggregate.add_aggregates(
+        |> AshSql.Aggregate.add_aggregates(
           used_aggregates,
           query.__ash_bindings__.resource,
-          select?: false
+          false,
+          query.__ash_bindings__.root_binding
         )
         |> case do
           {:ok, query} ->
@@ -2089,7 +2096,13 @@ defmodule AshSqlite.DataLayer do
       |> Enum.uniq()
 
     with {:ok, query} <-
-           AshSqlite.Aggregate.add_aggregates(query, aggregates, resource, select?: false) do
+           AshSql.Aggregate.add_aggregates(
+             query,
+             aggregates,
+             resource,
+             false,
+             query.__ash_bindings__.root_binding
+           ) do
       AshSql.Calculation.add_calculations(query, calculations, resource, 0, true)
     end
   end
