@@ -467,12 +467,17 @@ defmodule AshSqlite.DataLayer do
     false
   end
 
+  def can?(_, {:aggregate, :unrelated}), do: true
+  def can?(_, {:exists, :unrelated}), do: true
+
   def can?(_, :boolean_filter), do: true
 
-  def can?(_, {:aggregate, _type}), do: false
+  def can?(_, {:aggregate, type})
+      when type in [:count, :sum, :avg, :max, :min, :exists, :first, :list, :custom],
+      do: true
 
-  def can?(_, :aggregate_filter), do: false
-  def can?(_, :aggregate_sort), do: false
+  def can?(_, :aggregate_filter), do: true
+  def can?(_, :aggregate_sort), do: true
   def can?(_, :expression_calculation), do: true
   def can?(_, :expression_calculation_sort), do: true
   def can?(_, :create), do: true
@@ -496,7 +501,30 @@ defmodule AshSqlite.DataLayer do
 
   def can?(_, {:filter_relationship, _}), do: true
 
-  def can?(_, {:aggregate_relationship, _}), do: false
+  def can?(_, {:aggregate_relationship, %{manual: {_, _}}}), do: false
+
+  def can?(_, {:aggregate_relationship, %{type: :many_to_many} = relationship}) do
+    join_relationship =
+      Ash.Resource.Info.relationship(relationship.source, relationship.join_relationship)
+
+    not is_nil(join_relationship) &&
+      not AshSql.Aggregate.Grouped.relationship_filter_uses_parent?(relationship) &&
+      not AshSql.Aggregate.Grouped.relationship_filter_uses_parent?(join_relationship) &&
+      can?(relationship.source, {:join, relationship.through}) &&
+      can?(relationship.through, {:join, relationship.destination})
+  end
+
+  def can?(_, {:aggregate_relationship, %{no_attributes?: true}}), do: false
+
+  def can?(_, {:aggregate_relationship, relationship})
+      when not is_nil(relationship.filter) do
+    not AshSql.Aggregate.Grouped.relationship_filter_uses_parent?(relationship) &&
+      can?(relationship.source, {:join, relationship.destination})
+  end
+
+  def can?(resource, {:aggregate_relationship, relationship}) do
+    can?(resource, {:join, relationship.destination})
+  end
 
   def can?(_, :timeout), do: true
   def can?(_, {:filter_expr, %Ash.Query.Function.StringJoin{}}), do: false
@@ -561,6 +589,37 @@ defmodule AshSqlite.DataLayer do
   end
 
   @impl true
+  def return_query(query, resource) do
+    # AshSql.Query.return_query/2 also normalizes bindings. Do it here first so
+    # aggregate prebinding can inspect sort/load metadata before return_query
+    # consumes it.
+    query =
+      query
+      |> AshSql.Bindings.default_bindings(resource, AshSqlite.SqlImplementation)
+
+    load_aggregates = query.__ash_bindings__[:load_aggregates] || []
+
+    query_without_aggregates =
+      Map.update!(query, :__ash_bindings__, &Map.put(&1, :load_aggregates, []))
+
+    with {:ok, query_without_aggregates} <-
+           AshSql.Aggregate.Grouped.add_sort_aggregates(
+             query_without_aggregates,
+             query_without_aggregates.__ash_bindings__[:sort],
+             resource
+           ),
+         {:ok, query} <- AshSql.Query.return_query(query_without_aggregates, resource) do
+      AshSql.Aggregate.add_aggregates(
+        query,
+        load_aggregates,
+        resource,
+        true,
+        query.__ash_bindings__.root_binding
+      )
+    end
+  end
+
+  @impl true
   def run_aggregate_query(query, aggregates, resource) do
     AshSql.AggregateQuery.run_aggregate_query(
       query,
@@ -576,7 +635,14 @@ defmodule AshSqlite.DataLayer do
       if query.__ash_bindings__[:sort_applied?] do
         {:ok, query}
       else
-        AshSql.Sort.apply_sort(query, query.__ash_bindings__[:sort], resource)
+        with {:ok, query} <-
+               AshSql.Aggregate.Grouped.add_sort_aggregates(
+                 query,
+                 query.__ash_bindings__[:sort],
+                 resource
+               ) do
+          AshSql.Sort.apply_sort(query, query.__ash_bindings__[:sort], resource)
+        end
       end
 
     case with_sort_applied do
@@ -609,7 +675,8 @@ defmodule AshSqlite.DataLayer do
            repo.all(
              query,
              opts
-           )}
+           )
+           |> AshSql.Query.remap_mapped_fields(query)}
         end
     end
   rescue
@@ -2032,11 +2099,26 @@ defmodule AshSqlite.DataLayer do
 
   @impl true
   def filter(query, filter, _resource, opts \\ []) do
+    used_aggregates = Ash.Filter.used_aggregates(filter, [])
+
     query
     |> AshSql.Join.join_all_relationships(filter, opts)
     |> case do
       {:ok, query} ->
-        {:ok, AshSql.Filter.add_filter_expression(query, filter)}
+        query
+        |> AshSql.Aggregate.add_aggregates(
+          used_aggregates,
+          query.__ash_bindings__.resource,
+          false,
+          query.__ash_bindings__.root_binding
+        )
+        |> case do
+          {:ok, query} ->
+            {:ok, AshSql.Filter.add_filter_expression(query, filter)}
+
+          {:error, error} ->
+            {:error, error}
+        end
 
       {:error, error} ->
         {:error, error}
@@ -2044,8 +2126,36 @@ defmodule AshSqlite.DataLayer do
   end
 
   @impl true
+  def add_aggregates(query, aggregates, _resource) do
+    {:ok,
+     Map.update!(query, :__ash_bindings__, fn bindings ->
+       Map.put(bindings, :load_aggregates, aggregates)
+     end)}
+  end
+
+  @impl true
   def add_calculations(query, calculations, resource) do
-    AshSql.Calculation.add_calculations(query, calculations, resource, 0, true)
+    aggregates =
+      calculations
+      |> Enum.flat_map(fn {calculation, expression} ->
+        expression
+        |> Ash.Filter.used_aggregates([])
+        |> Enum.map(&Map.put(&1, :context, calculation.context))
+      end)
+      # Preserve context before deduping: identical calculation contexts share
+      # one aggregate binding, different contexts stay isolated.
+      |> Enum.uniq()
+
+    with {:ok, query} <-
+           AshSql.Aggregate.add_aggregates(
+             query,
+             aggregates,
+             resource,
+             false,
+             query.__ash_bindings__.root_binding
+           ) do
+      AshSql.Calculation.add_calculations(query, calculations, resource, 0, true)
+    end
   end
 
   @doc false
