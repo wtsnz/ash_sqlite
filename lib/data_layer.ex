@@ -590,11 +590,9 @@ defmodule AshSqlite.DataLayer do
 
   @impl true
   def return_query(query, resource) do
-    query =
-      query
-      |> AshSql.Bindings.default_bindings(resource, AshSqlite.SqlImplementation)
-
-    AshSql.Query.return_query(query, resource)
+    query
+    |> AshSql.Bindings.default_bindings(resource, AshSqlite.SqlImplementation)
+    |> AshSql.Query.return_query(resource)
   end
 
   @impl true
@@ -646,8 +644,7 @@ defmodule AshSqlite.DataLayer do
            repo.all(
              query,
              opts
-           )
-           |> AshSql.Query.remap_mapped_fields(query)}
+           )}
         end
     end
   rescue
@@ -2070,30 +2067,7 @@ defmodule AshSqlite.DataLayer do
 
   @impl true
   def filter(query, filter, _resource, opts \\ []) do
-    used_aggregates = Ash.Filter.used_aggregates(filter, [])
-
-    query
-    |> AshSql.Join.join_all_relationships(filter, opts)
-    |> case do
-      {:ok, query} ->
-        query
-        |> AshSql.Aggregate.add_aggregates(
-          used_aggregates,
-          query.__ash_bindings__.resource,
-          false,
-          query.__ash_bindings__.root_binding
-        )
-        |> case do
-          {:ok, query} ->
-            {:ok, AshSql.Filter.add_filter_expression(query, filter)}
-
-          {:error, error} ->
-            {:error, error}
-        end
-
-      {:error, error} ->
-        {:error, error}
-    end
+    AshSql.Filter.filter(query, filter, query.__ash_bindings__.resource, opts)
   end
 
   @impl true
@@ -2106,27 +2080,13 @@ defmodule AshSqlite.DataLayer do
 
   @impl true
   def add_calculations(query, calculations, resource) do
-    aggregates =
-      calculations
-      |> Enum.flat_map(fn {calculation, expression} ->
-        expression
-        |> Ash.Filter.used_aggregates([])
-        |> Enum.map(&Map.put(&1, :context, calculation.context))
-      end)
-      # Preserve context before deduping: identical calculation contexts share
-      # one aggregate binding, different contexts stay isolated.
-      |> Enum.uniq()
-
-    with {:ok, query} <-
-           AshSql.Aggregate.add_aggregates(
-             query,
-             aggregates,
-             resource,
-             false,
-             query.__ash_bindings__.root_binding
-           ) do
-      AshSql.Calculation.add_calculations(query, calculations, resource, 0, true)
-    end
+    AshSql.Calculation.add_calculations(
+      query,
+      calculations,
+      resource,
+      query.__ash_bindings__.root_binding,
+      true
+    )
   end
 
   @doc false
