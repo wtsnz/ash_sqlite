@@ -328,7 +328,7 @@ Helpdesk.Support.Ticket
 
 Aggregates include grouped data about relationships. You can read more about them in the [Ash aggregates guide](https://hexdocs.pm/ash/aggregates.html) and the [AshSqlite aggregates guide](../topics/resources/aggregates.md).
 
-Lets add aggregates to the representative resource so we can query how many tickets are assigned to a representative, how many are open, and the first ticket subject.
+Let's add aggregates to the representative resource so we can query how many tickets are assigned to a representative, how many are open, and the first ticket subject.
 
 ```elixir
 # in lib/helpdesk/support/resources/representative.ex

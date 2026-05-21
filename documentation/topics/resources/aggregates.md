@@ -160,7 +160,7 @@ Multi-hop aggregates use each relationship's configured read action. If an inter
 
 ## SQLite Requirements
 
-`first` and `list` aggregates require SQLite 3.30.0 or later with JSON functions enabled. Window functions were added in SQLite 3.25.0, but AshSqlite's generated SQL also uses aggregate `FILTER` clauses and explicit `NULLS FIRST`/`NULLS LAST` ordering, which require SQLite 3.30.0 or later.
+Aggregate filters and `first`/`list` aggregate ordering require SQLite 3.30.0 or later. Window functions were added in SQLite 3.25.0, but AshSqlite's generated SQL also uses aggregate `FILTER` clauses and explicit `NULLS FIRST`/`NULLS LAST` ordering, which require SQLite 3.30.0 or later. `list` aggregates also require JSON functions.
 
 - window functions
 - aggregate `FILTER`
@@ -206,7 +206,7 @@ aggregates do
 end
 ```
 
-`AshSqlite.CustomAggregate` only defines the `dynamic/2` contract. It does not install SQLite extensions or register user-defined functions. If your custom aggregate uses a function that is not built into SQLite, register it with the SQLite connection yourself and make sure it is available in every environment.
+`AshSqlite.CustomAggregate` only defines the `dynamic/2` contract. Custom aggregates must return SQLite-compatible Ecto dynamic expressions. This behaviour does not install SQLite extensions or register user-defined functions. If your custom aggregate uses a function that is not built into SQLite, register it with the SQLite connection yourself and make sure it is available in every environment.
 
 ## Performance
 
@@ -224,6 +224,7 @@ Useful indexes usually include:
 Full aggregate parity with [AshPostgres](https://hexdocs.pm/ash_postgres) is not available. Unsupported cases include:
 
 - inline query-level `list` and `custom` aggregate expressions
+- relationship query aggregates
 - unrelated aggregates that reference the parent row
 - manual relationships
 - `no_attributes?` relationships
