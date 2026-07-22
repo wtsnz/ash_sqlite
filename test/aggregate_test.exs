@@ -6,7 +6,17 @@ defmodule AshSqlite.AggregatesTest do
   use AshSqlite.RepoCase, async: false
 
   require Ash.Query
-  alias AshSqlite.Test.{Author, Comment, Post, PostLink, Profile, Rating}
+
+  alias AshSqlite.Test.{
+    Author,
+    Comment,
+    Post,
+    PostLink,
+    PostView,
+    PostWithNamedPrimaryKey,
+    Profile,
+    Rating
+  }
 
   test "a count with a filter returns the appropriate value" do
     Ash.Seed.seed!(%Post{title: "foo"})
@@ -85,6 +95,30 @@ defmodule AshSqlite.AggregatesTest do
                 query: [filter: [title: "missing"], sort: [title: :asc]]}
              ])
   end
+  test "fieldless unique query counts use the resource primary key" do
+    create_post!("named primary key a")
+    create_post!("named primary key b")
+
+    assert %{unique_count: 2} =
+             Ash.aggregate!(PostWithNamedPrimaryKey, [
+               {:unique_count, :count, uniq?: true}
+             ])
+  end
+
+  test "fieldless unique query counts reject composite primary keys" do
+    assert_raise Ash.Error.Unknown,
+                 ~r/requires a single primary key.*composite primary key/,
+                 fn ->
+                   Ash.aggregate!(PostLink, [{:unique_count, :count, uniq?: true}])
+                 end
+  end
+
+  test "fieldless unique query counts reject resources without primary keys" do
+    assert_raise Ash.Error.Unknown, ~r/requires a single primary key.*has no primary key/, fn ->
+      Ash.aggregate!(PostView, [{:unique_count, :count, uniq?: true}])
+    end
+  end
+
 
   test "pagination returns the count" do
     Ash.Seed.seed!(%Post{title: "foo"})
