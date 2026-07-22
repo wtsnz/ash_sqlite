@@ -11,6 +11,13 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## Unreleased
+
+### Improvements:
+
+* support SQLite aggregates for loading, filtering, sorting, calculations, and root query aggregates
+* add grouped aggregate regression coverage for list defaults and root query aggregate kinds
+
 ## [v0.2.17](https://github.com/ash-project/ash_sqlite/compare/v0.2.16...v0.2.17) (2026-04-22)
 
 
