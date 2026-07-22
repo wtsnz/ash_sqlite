@@ -10,6 +10,9 @@ defmodule AshSqlite.SqlImplementation do
   require Ash.Expr
 
   @impl true
+  def aggregate_strategy(_resource), do: :grouped
+
+  @impl true
   def manual_relationship_function, do: :ash_sqlite_join
 
   @impl true
