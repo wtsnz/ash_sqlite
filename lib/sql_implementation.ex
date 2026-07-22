@@ -13,6 +13,22 @@ defmodule AshSqlite.SqlImplementation do
   def aggregate_strategy(_resource), do: :grouped
 
   @impl true
+  def grouped_list_aggregate(field, true) do
+    Ecto.Query.dynamic(
+      over(fragment("json_group_array(?)", ^field), :ash_sql_grouped_aggregate_window)
+    )
+  end
+
+  def grouped_list_aggregate(field, false) do
+    Ecto.Query.dynamic(
+      over(
+        fragment("json_group_array(?) FILTER (WHERE ? IS NOT NULL)", ^field, ^field),
+        :ash_sql_grouped_aggregate_window
+      )
+    )
+  end
+
+  @impl true
   def manual_relationship_function, do: :ash_sqlite_join
 
   @impl true
