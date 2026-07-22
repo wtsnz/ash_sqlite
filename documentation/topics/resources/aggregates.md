@@ -64,6 +64,9 @@ Relationship query aggregates are not supported by the grouped aggregate query
 path. Define a resource aggregate and load, filter, or sort on that aggregate
 instead.
 
+A fieldless `count` with `uniq?: true` counts the resource's primary key and
+requires the resource to have exactly one primary-key attribute.
+
 ## Calculations
 
 Expression calculations can reference aggregates and be pushed down to SQLite.
