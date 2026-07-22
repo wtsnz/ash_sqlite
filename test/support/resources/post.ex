@@ -127,6 +127,25 @@ defmodule AshSqlite.Test.Post do
 
     has_many(:comments, AshSqlite.Test.Comment, destination_attribute: :post_id, public?: true)
 
+    has_many :top_comments, AshSqlite.Test.Comment do
+      destination_attribute(:post_id)
+      sort(likes: :desc)
+      limit(2)
+    end
+
+    has_many :middle_comments, AshSqlite.Test.Comment do
+      destination_attribute(:post_id)
+      sort(likes: :desc)
+      offset(1)
+      limit(2)
+    end
+
+    has_many :comments_after_top, AshSqlite.Test.Comment do
+      destination_attribute(:post_id)
+      sort(likes: :desc)
+      offset(2)
+    end
+
     has_many :comments_matching_post_title, AshSqlite.Test.Comment do
       public?(true)
       filter(expr(title == parent_expr(title)))
@@ -178,12 +197,17 @@ defmodule AshSqlite.Test.Post do
 
   aggregates do
     count(:count_of_comments, :comments)
+    count(:count_of_top_comments, :top_comments)
+    count(:count_of_middle_comments, :middle_comments)
+    count(:count_of_comments_after_top, :comments_after_top)
     count(:count_of_popular_comments, :popular_comments)
     count(:count_of_linked_posts, :linked_posts)
     count(:count_of_comments_through_linked_posts, [:linked_posts, :comments])
     count(:count_of_liked_comments, :comments, read_action: :liked)
     count(:count_of_comment_ratings, [:comments, :ratings])
     sum(:sum_of_comment_likes, :comments, :likes)
+    sum(:sum_of_comment_double_likes, :comments, :double_likes)
+    sum(:sum_of_comment_rating_counts, :comments, :count_of_ratings)
     sum(:sum_of_comment_likes_called_match, :comments, :likes, filter: expr(title == "match"))
 
     sum(:sum_of_comment_likes_with_popular_ratings, :comments, :likes) do
@@ -209,6 +233,10 @@ defmodule AshSqlite.Test.Post do
 
     first :first_comment, :comments, :title do
       sort(title: :asc_nils_last)
+    end
+
+    first :highest_comment_double_likes, :comments, :double_likes do
+      sort(double_likes: :desc)
     end
 
     first :first_comment_nils_first, :comments, :title do
@@ -255,6 +283,14 @@ defmodule AshSqlite.Test.Post do
 
     list :comment_titles, :comments, :title do
       sort(title: :asc_nils_last)
+    end
+
+    list(:top_comment_likes, :top_comments, :likes)
+    list(:middle_comment_likes, :middle_comments, :likes)
+    list(:comment_likes_after_top, :comments_after_top, :likes)
+
+    list :comment_double_likes, :comments, :double_likes do
+      sort(double_likes: :asc)
     end
 
     list :comment_titles_with_empty_default, :comments, :title do

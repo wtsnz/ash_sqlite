@@ -132,6 +132,49 @@ defmodule AshSqlite.AggregatesTest do
              |> Ash.count!()
   end
 
+  test "root first and exists aggregates use the limited query input" do
+    create_post!("limited input a")
+    create_post!("limited input b")
+    create_post!("limited input c")
+
+    empty_query = Ash.Query.limit(Post, 0)
+
+    assert %{first_title: nil, exists_any: false} =
+             Ash.aggregate!(empty_query, [
+               {:first_title, :first, field: :title, query: [sort: [title: :asc]]},
+               {:exists_any, :exists}
+             ])
+
+    assert %{first_title: "limited input c"} =
+             Post
+             |> Ash.Query.sort(title: :desc)
+             |> Ash.Query.limit(1)
+             |> Ash.aggregate!([
+               {:first_title, :first, field: :title, query: [sort: [title: :asc]]}
+             ])
+
+    refute Post
+           |> Ash.Query.sort(title: :asc)
+           |> Ash.Query.offset(3)
+           |> Ash.Query.limit(1)
+           |> Ash.exists?()
+  end
+
+  test "query aggregates resolve calculation and aggregate fields" do
+    first = create_post!("rich query field a", %{score: 1})
+    second = create_post!("rich query field b", %{score: 2})
+
+    create_comment!(first, "first", 1)
+    create_comment!(second, "second", 1)
+    create_comment!(second, "third", 1)
+
+    assert %{winning_score_total: 5, comment_count_total: 3} =
+             Ash.aggregate!(Post, [
+               {:winning_score_total, :sum, field: :score_after_winning},
+               {:comment_count_total, :sum, field: :count_of_comments}
+             ])
+  end
+
   test "grouped aggregate Ecto types preserve item constraints" do
     {:ok, query} =
       Post
@@ -237,6 +280,54 @@ defmodule AshSqlite.AggregatesTest do
              |> Ash.Query.load(:count_of_comments)
              |> Ash.Query.sort(:title)
              |> Ash.read!()
+  end
+
+  test "relationship limits and offsets constrain loaded aggregates" do
+    post = create_post!("limited relationship")
+
+    for likes <- 1..5 do
+      create_comment!(post, "comment #{likes}", likes)
+    end
+
+    assert %{
+             count_of_top_comments: 2,
+             top_comment_likes: [5, 4],
+             count_of_middle_comments: 2,
+             middle_comment_likes: [4, 3],
+             count_of_comments_after_top: 3,
+             comment_likes_after_top: [3, 2, 1]
+           } =
+             Ash.load!(post, [
+               :count_of_top_comments,
+               :top_comment_likes,
+               :count_of_middle_comments,
+               :middle_comment_likes,
+               :count_of_comments_after_top,
+               :comment_likes_after_top
+             ])
+  end
+
+  test "loaded aggregates resolve calculation and aggregate fields" do
+    post = create_post!("rich loaded fields")
+    first = create_comment!(post, "first", 2)
+    second = create_comment!(post, "second", 4)
+
+    create_comment_rating!(first, 1)
+    create_comment_rating!(first, 2)
+    create_comment_rating!(second, 3)
+
+    assert %{
+             sum_of_comment_double_likes: 12,
+             sum_of_comment_rating_counts: 3,
+             highest_comment_double_likes: 8,
+             comment_double_likes: [4, 8]
+           } =
+             Ash.load!(post, [
+               :sum_of_comment_double_likes,
+               :sum_of_comment_rating_counts,
+               :highest_comment_double_likes,
+               :comment_double_likes
+             ])
   end
 
   test "fieldless count aggregates use SQL count star" do
