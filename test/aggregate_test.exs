@@ -95,6 +95,7 @@ defmodule AshSqlite.AggregatesTest do
                 query: [filter: [title: "missing"], sort: [title: :asc]]}
              ])
   end
+
   test "fieldless unique query counts use the resource primary key" do
     create_post!("named primary key a")
     create_post!("named primary key b")
@@ -119,6 +120,17 @@ defmodule AshSqlite.AggregatesTest do
     end
   end
 
+  test "offset-only query aggregates count the offset result set" do
+    create_post!("offset aggregate a")
+    create_post!("offset aggregate b")
+    create_post!("offset aggregate c")
+
+    assert 2 ==
+             Post
+             |> Ash.Query.sort(:title)
+             |> Ash.Query.offset(1)
+             |> Ash.count!()
+  end
 
   test "grouped aggregate Ecto types preserve item constraints" do
     {:ok, query} =
