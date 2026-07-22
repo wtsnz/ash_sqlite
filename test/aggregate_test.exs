@@ -132,6 +132,49 @@ defmodule AshSqlite.AggregatesTest do
              |> Ash.count!()
   end
 
+  test "root first and exists aggregates use the limited query input" do
+    create_post!("limited input a")
+    create_post!("limited input b")
+    create_post!("limited input c")
+
+    empty_query = Ash.Query.limit(Post, 0)
+
+    assert %{first_title: nil, exists_any: false} =
+             Ash.aggregate!(empty_query, [
+               {:first_title, :first, field: :title, query: [sort: [title: :asc]]},
+               {:exists_any, :exists}
+             ])
+
+    assert %{first_title: "limited input c"} =
+             Post
+             |> Ash.Query.sort(title: :desc)
+             |> Ash.Query.limit(1)
+             |> Ash.aggregate!([
+               {:first_title, :first, field: :title, query: [sort: [title: :asc]]}
+             ])
+
+    refute Post
+           |> Ash.Query.sort(title: :asc)
+           |> Ash.Query.offset(3)
+           |> Ash.Query.limit(1)
+           |> Ash.exists?()
+  end
+
+  test "query aggregates resolve calculation and aggregate fields" do
+    first = create_post!("rich query field a", %{score: 1})
+    second = create_post!("rich query field b", %{score: 2})
+
+    create_comment!(first, "first", 1)
+    create_comment!(second, "second", 1)
+    create_comment!(second, "third", 1)
+
+    assert %{winning_score_total: 5, comment_count_total: 3} =
+             Ash.aggregate!(Post, [
+               {:winning_score_total, :sum, field: :score_after_winning},
+               {:comment_count_total, :sum, field: :count_of_comments}
+             ])
+  end
+
   test "grouped aggregate Ecto types preserve item constraints" do
     {:ok, query} =
       Post
