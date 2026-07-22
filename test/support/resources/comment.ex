@@ -74,4 +74,8 @@ defmodule AshSqlite.Test.Comment do
   aggregates do
     count(:count_of_ratings, :ratings)
   end
+
+  calculations do
+    calculate(:double_likes, :integer, expr(likes * 2))
+  end
 end
