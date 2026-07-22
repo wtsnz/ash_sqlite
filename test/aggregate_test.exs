@@ -120,6 +120,22 @@ defmodule AshSqlite.AggregatesTest do
   end
 
 
+  test "grouped aggregate Ecto types preserve item constraints" do
+    {:ok, query} =
+      Post
+      |> Ash.Query.load(:comment_titles)
+      |> Ash.Query.data_layer_query()
+
+    assert {:merge, _, [_, {:%{}, _, fields}]} = query.select.expr
+
+    assert {:type, _, [_value, {:array, parameterized_type}]} =
+             Keyword.fetch!(fields, :comment_titles)
+
+    assert {:parameterized, {Ash.Type.String.EctoType, constraints}} = parameterized_type
+    assert constraints[:trim?]
+    refute constraints[:allow_empty?]
+  end
+
   test "pagination returns the count" do
     Ash.Seed.seed!(%Post{title: "foo"})
     Ash.Seed.seed!(%Post{title: "foo"})
