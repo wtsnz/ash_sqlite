@@ -54,6 +54,38 @@ defmodule AshSqlite.AggregatesTest do
            |> Ash.exists?()
   end
 
+  test "query first aggregates preserve nil, default, and sort semantics" do
+    create_post!(nil)
+    create_post!("query first a")
+    create_post!("query first z")
+
+    assert %{
+             ascending: "query first a",
+             descending: "query first z",
+             ascending_nils_first: nil,
+             ascending_nils_last: "query first a",
+             descending_nils_first: nil,
+             descending_nils_last: "query first z",
+             defaulted: "fallback"
+           } =
+             Ash.aggregate!(Post, [
+               {:ascending, :first, field: :title, query: [sort: [title: :asc]]},
+               {:descending, :first, field: :title, query: [sort: [title: :desc]]},
+               {:ascending_nils_first, :first,
+                field: :title, include_nil?: true, query: [sort: [title: :asc_nils_first]]},
+               {:ascending_nils_last, :first,
+                field: :title, include_nil?: true, query: [sort: [title: :asc_nils_last]]},
+               {:descending_nils_first, :first,
+                field: :title, include_nil?: true, query: [sort: [title: :desc_nils_first]]},
+               {:descending_nils_last, :first,
+                field: :title, include_nil?: true, query: [sort: [title: :desc_nils_last]]},
+               {:defaulted, :first,
+                field: :title,
+                default: "fallback",
+                query: [filter: [title: "missing"], sort: [title: :asc]]}
+             ])
+  end
+
   test "pagination returns the count" do
     Ash.Seed.seed!(%Post{title: "foo"})
     Ash.Seed.seed!(%Post{title: "foo"})
