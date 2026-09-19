@@ -561,6 +561,13 @@ defmodule AshSqlite.DataLayer do
   end
 
   @impl true
+  def return_query(query, resource) do
+    query
+    |> AshSql.Bindings.default_bindings(resource, AshSqlite.SqlImplementation)
+    |> AshSql.Query.return_query(resource)
+  end
+
+  @impl true
   def run_aggregate_query(query, aggregates, resource) do
     AshSql.AggregateQuery.run_aggregate_query(
       query,
