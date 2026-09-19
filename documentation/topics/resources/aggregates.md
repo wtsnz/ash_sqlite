@@ -49,6 +49,12 @@ representatives = Helpdesk.Support.read!(Helpdesk.Support.Representative)
 Ash.load!(representatives, [:total_tickets, :ticket_subjects])
 ```
 
+Loaded query aggregates may use string names. Their values retain those names
+in the record's `aggregates` map. Aggregate references through relationships,
+such as `comments.count_of_ratings`, are evaluated against the related record.
+Expression calculations can also use inline related aggregates, including
+`list(posts, field: :title)`.
+
 ## Query Aggregates
 
 AshSqlite supports root query aggregates for `count`, `sum`, `avg`, `min`, `max`,
@@ -227,7 +233,7 @@ Useful indexes usually include:
 
 Full aggregate parity with [AshPostgres](https://hexdocs.pm/ash_postgres) is not available. Unsupported cases include:
 
-- inline query-level `list` and `custom` aggregate expressions
+- root `list` and `custom` query aggregates through `Ash.aggregate/2`
 - relationship query aggregates
 - unrelated aggregates that reference the parent row
 - manual relationships

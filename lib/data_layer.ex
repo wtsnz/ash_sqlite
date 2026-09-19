@@ -641,10 +641,9 @@ defmodule AshSqlite.DataLayer do
             AshSql.repo_opts(repo, AshSqlite.SqlImplementation, nil, nil, resource)
 
           {:ok,
-           repo.all(
-             query,
-             opts
-           )}
+           query
+           |> repo.all(opts)
+           |> AshSql.Query.remap_mapped_fields(query)}
         end
     end
   rescue
