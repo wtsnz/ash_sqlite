@@ -168,6 +168,11 @@ end
 
 Multi-hop aggregates use each relationship's configured read action. If an intermediate hop needs scoped rows, define the read action on that relationship rather than trying to override it per aggregate.
 
+Intermediate relationships and many-to-many join resources retain their read
+action arguments, shared context, and attribute-based tenant scope. Read action
+filters apply before relationship limits and offsets. Aggregate filters apply
+to the resulting bounded relationship, including for `first` and `list`.
+
 ## SQLite Requirements
 
 Aggregate filters and `first`/`list` aggregate ordering require SQLite 3.30.0 or later. Window functions were added in SQLite 3.25.0, but AshSqlite's generated SQL also uses aggregate `FILTER` clauses and explicit `NULLS FIRST`/`NULLS LAST` ordering, which require SQLite 3.30.0 or later. `list` aggregates also require JSON functions.
