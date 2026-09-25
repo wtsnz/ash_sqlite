@@ -13,6 +13,9 @@ defmodule AshSqlite.SqlImplementation do
   def aggregate_strategy(_resource), do: :grouped
 
   @impl true
+  def table_prefixes?, do: false
+
+  @impl true
   def grouped_list_aggregate(field, true) do
     Ecto.Query.dynamic(
       over(fragment("json_group_array(?)", ^field), :ash_sql_grouped_aggregate_window)
