@@ -20,6 +20,8 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 ### Bug Fixes:
 
+* aggregate only the selected row of a `from_many?` relationship, including when an offset is configured
+
 * preserve aggregate relationship preparations, configured arguments, and attribute tenant scope
 * respect relationship limits when filtering first and list aggregates
 

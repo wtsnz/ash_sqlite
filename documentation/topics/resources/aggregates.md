@@ -173,6 +173,11 @@ action arguments, shared context, and attribute-based tenant scope. Read action
 filters apply before relationship limits and offsets. Aggregate filters apply
 to the resulting bounded relationship, including for `first` and `list`.
 
+A `has_one` relationship with `from_many? true` contributes at most one row to
+an aggregate. Its sort and offset select that row before aggregate filters
+apply. For example, counting a highest-rated comment returns one when it
+exists, and summing its rating returns that comment's rating.
+
 ## SQLite Requirements
 
 Aggregate filters and `first`/`list` aggregate ordering require SQLite 3.30.0 or later. Window functions were added in SQLite 3.25.0, but AshSqlite's generated SQL also uses aggregate `FILTER` clauses and explicit `NULLS FIRST`/`NULLS LAST` ordering, which require SQLite 3.30.0 or later. `list` aggregates also require JSON functions.
