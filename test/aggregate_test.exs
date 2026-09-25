@@ -525,6 +525,77 @@ defmodule AshSqlite.AggregatesTest do
              Ash.load!(post, :count_of_comments_with_popular_ratings)
   end
 
+  describe "loaded fieldless distinct counts" do
+    setup do
+      post = create_post!("distinct count source")
+
+      destinations =
+        for index <- 1..3 do
+          destination = create_post!("distinct count destination #{index}")
+          create_comment!(destination, "match", 1)
+          create_comment!(destination, "match", 1)
+          destination
+        end
+
+      link_posts!(post, destinations)
+
+      %{post: post}
+    end
+
+    test "reject composite primary keys", %{post: post} do
+      assert_raise Ash.Error.Unknown,
+                   ~r/requires a single primary key.*composite primary key/,
+                   fn ->
+                     Post
+                     |> Ash.Query.filter(id == ^post.id)
+                     |> Ash.Query.aggregate(:link_count, :count, :post_links, uniq?: true)
+                     |> Ash.read_one!()
+                   end
+    end
+
+    test "over to-many filter refs reject composite primary keys", %{post: post} do
+      assert_raise Ash.Error.Unknown,
+                   ~r/requires a single primary key.*composite primary key/,
+                   fn ->
+                     Post
+                     |> Ash.Query.filter(id == ^post.id)
+                     |> Ash.Query.aggregate(:link_count, :count, :post_links,
+                       query: [filter: [destination_post: [comments: [title: "match"]]]]
+                     )
+                     |> Ash.read_one!()
+                   end
+    end
+
+    test "reject resources without primary keys", %{post: post} do
+      for _ <- 1..3 do
+        PostView
+        |> Ash.Changeset.for_action(:create, %{browser: :firefox, post_id: post.id})
+        |> Ash.create!()
+      end
+
+      assert_raise Ash.Error.Unknown, ~r/requires a single primary key.*has no primary key/, fn ->
+        Post
+        |> Ash.Query.filter(id == ^post.id)
+        |> Ash.Query.aggregate(:view_count, :count, :views, uniq?: true)
+        |> Ash.read_one!()
+      end
+    end
+
+    test "do not affect exists over to-many filter refs", %{post: post} do
+      linked_id = post.id
+      unlinked_id = create_post!("distinct count unlinked").id
+
+      assert %{^linked_id => true, ^unlinked_id => false} =
+               Post
+               |> Ash.Query.filter(id in [^linked_id, ^unlinked_id])
+               |> Ash.Query.aggregate(:has_link, :exists, :post_links,
+                 query: [filter: [destination_post: [comments: [title: "match"]]]]
+               )
+               |> Ash.read!()
+               |> Map.new(&{&1.id, &1.aggregates.has_link})
+    end
+  end
+
   test "exists filters avoid to-many fanout for sum aggregates" do
     post = create_post!("exists fanout aggregate filter")
     popular_comment = create_comment!(post, "popular", 4)
